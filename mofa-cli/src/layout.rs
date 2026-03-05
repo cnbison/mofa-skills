@@ -124,9 +124,23 @@ Return ONLY a JSON array."#
     rescale_x_positions(&mut overlays, sw);
     align_columns(&mut overlays, sw, sh);
 
+    // Find topmost and bottommost y to detect title/footer by relative position
+    let min_y = overlays.iter().map(|ov| ov.y).fold(f64::INFINITY, f64::min);
+    let max_y = overlays.iter().map(|ov| ov.y).fold(f64::NEG_INFINITY, f64::max);
+
     for ov in &mut overlays {
-        // Full-width for large centered elements
-        if ov.align == "ctr" && ov.w > sw * 0.4 {
+        // Title: within 0.3" of topmost element → full width
+        if ov.y - min_y < 0.3 {
+            ov.x = 0.3;
+            ov.w = sw - 0.6;
+        }
+        // Footer: within 0.3" of bottommost element → full width
+        else if max_y - ov.y < 0.3 {
+            ov.x = 0.3;
+            ov.w = sw - 0.6;
+        }
+        // Other centered wide elements
+        else if ov.align == "ctr" && ov.w > sw * 0.4 {
             ov.x = 0.3;
             ov.w = sw - 0.6;
         }
@@ -301,11 +315,15 @@ fn get_image_dimensions(image_path: &Path) -> (f64, f64) {
 /// Fix bounding box heights to match VQA font sizes.
 ///
 /// VQA font size guesses are reasonably accurate, but VQA bounding box heights
-/// are systematically too small (~2.9x underestimate due to DPI mismatch +
-/// tight bbox vs em-square). Rather than calibrating font sizes down from bad
-/// heights, we trust font sizes and fix heights to match.
+/// are systematically too small (~2.9x underestimate). We trust font sizes and
+/// expand heights to match.
+///
+/// Also caps font sizes at 40pt — VQA occasionally overestimates large CJK
+/// title fonts (e.g. reports 56pt when actual is ~30pt). Users can always
+/// adjust font sizes in the PPTX.
 fn fix_bbox_from_font_size(overlays: &mut [TextOverlay]) {
     const LINE_SPACING: f64 = 1.3;
+    const MAX_FONT_SIZE: f64 = 40.0;
 
     for ov in overlays.iter_mut() {
         let text = ov.text.as_deref().unwrap_or("");
@@ -313,9 +331,20 @@ fn fix_bbox_from_font_size(overlays: &mut [TextOverlay]) {
             continue;
         }
 
-        let fs = ov.font_size.unwrap_or(18.0);
+        let mut fs = ov.font_size.unwrap_or(18.0);
+
+        // Cap overly large font sizes
+        if fs > MAX_FONT_SIZE {
+            eprintln!(
+                "  bbox fix: fs={:.0}pt → {:.0}pt (capped) for {:?}",
+                fs, MAX_FONT_SIZE,
+                &text.chars().take(30).collect::<String>()
+            );
+            fs = MAX_FONT_SIZE;
+            ov.font_size = Some(fs);
+        }
+
         let num_lines = text.split('\n').count() as f64;
-        // Expected height: font_size_inches × num_lines × line_spacing
         let expected_h = (fs / 72.0) * num_lines * LINE_SPACING;
 
         if expected_h > ov.h {
@@ -490,9 +519,9 @@ fn align_columns(overlays: &mut [TextOverlay], sw: f64, _sh: f64) {
             // Find the largest gap
             let max_gap = gaps.last().map(|g| g.1).unwrap_or(0.0);
 
-            // Merge the pair with the smallest gap if it's < 60% of the largest gap
+            // Merge the pair with the smallest gap if it's < 75% of the largest gap
             if let Some(&(merge_idx, smallest_gap)) = gaps.first() {
-                if smallest_gap < max_gap * 0.6 && groups.len() > 2 {
+                if smallest_gap < max_gap * 0.75 && groups.len() > 2 {
                     // Merge group merge_idx and merge_idx+1
                     let right_members = groups[merge_idx + 1].1.clone();
                     groups[merge_idx].1.extend(right_members);
@@ -527,36 +556,25 @@ fn align_columns(overlays: &mut [TextOverlay], sw: f64, _sh: f64) {
         overlays[a[0]].x.partial_cmp(&overlays[b[0]].x).unwrap()
     });
 
-    // Step 4: Snap each column to its minimum x (now corrected by rescale_x_positions)
-    // and expand width to fill the gap to the next column.
+    // Step 4: Distribute columns evenly across the slide content area.
+    // VQA relative column positions are unreliable — evenly distributing
+    // is more accurate for structured presentation slides.
     let col_count = columns.len();
+    let margin = 0.3;
+    let gap = 0.15;
+    let content_w = sw - 2.0 * margin;
+    let col_width = (content_w - (col_count as f64 - 1.0) * gap) / col_count as f64;
+
     for ci in 0..col_count {
-        let min_x = columns[ci]
-            .iter()
-            .map(|&i| overlays[i].x)
-            .fold(f64::INFINITY, f64::min);
-
-        // Column right edge: next column's min_x minus gap, or slide edge
-        let gap = 0.15;
-        let max_right = if ci + 1 < col_count {
-            let next_min_x = columns[ci + 1]
-                .iter()
-                .map(|&i| overlays[i].x)
-                .fold(f64::INFINITY, f64::min);
-            next_min_x - gap
-        } else {
-            sw - 0.3
-        };
-
-        let col_width = (max_right - min_x).max(1.0);
+        let col_x = margin + ci as f64 * (col_width + gap);
 
         eprintln!(
-            "  col-align [{ci}]: {} members, x={min_x:.2}\" w={col_width:.2}\"",
+            "  col-align [{ci}]: {} members, x={col_x:.2}\" w={col_width:.2}\"",
             columns[ci].len(),
         );
 
         for &idx in &columns[ci] {
-            overlays[idx].x = min_x;
+            overlays[idx].x = col_x;
             overlays[idx].w = col_width;
         }
     }
