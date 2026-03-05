@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 // Standalone CLI to animate an existing card image.
 // Usage: node animate-card.js <cardName> [animStyle]
 //

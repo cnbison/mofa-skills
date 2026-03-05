@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 const PptxGenJS = require("pptxgenjs");
 const { GoogleGenAI } = require("@google/genai");
 const fs = require("fs");

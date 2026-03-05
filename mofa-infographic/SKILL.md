@@ -60,10 +60,13 @@ generateInfographic({
 
 ## Config
 
-Users can set API keys and preferences via chat. Read or edit `~/.crew/skills/mofa/config.json`.
+Read or edit `~/.crew/skills/mofa/config.json`.
 
-**API keys**: `"env:GEMINI_API_KEY"` or literal. Optional: `api_keys.dashscope` for Qwen-Edit refinement.
+**API keys** — use environment variables (never commit literal keys):
+- `"env:GEMINI_API_KEY"` — set via `export GEMINI_API_KEY="your-key"`
+- Optional: `api_keys.dashscope` for Qwen-Edit refinement
+
 **Models**: `gen_model`, `edit_model`.
 **Defaults**: `defaults.infographic.*`: `style`, `panels`, `refine_with_qwen`.
 
-Example: "set my gemini key to AIzaSy..." / "use editorial style by default" / "disable qwen refinement"
+Example: "use editorial style by default" / "disable qwen refinement"

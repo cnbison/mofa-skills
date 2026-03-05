@@ -1,1 +1,24 @@
+# Dependencies
 node_modules/
+
+# Rust build artifacts
+mofa-cli/target/
+
+# Generated outputs
+*.pptx
+*.mp4
+
+# Environment and secrets
+.env
+.env.*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+*.swp
+*.swo
+*~
+.idea/
+.vscode/

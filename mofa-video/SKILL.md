@@ -71,10 +71,12 @@ runVideoCards({
 
 ## Config
 
-Users can set API keys and preferences via chat. Read or edit `~/.crew/skills/mofa/config.json`.
+Read or edit `~/.crew/skills/mofa/config.json`.
 
-**API keys**: `"env:GEMINI_API_KEY"` (env var) or `"AIzaSy..."` (literal).
+**API keys** — use environment variables (never commit literal keys):
+- `"env:GEMINI_API_KEY"` — set via `export GEMINI_API_KEY="your-key"`
+
 **Models**: `gen_model` (image gen), `edit_model` (Qwen refinement).
 **Defaults**: `defaults.video.*`: `anim_style`, `bgm`.
 
-Example: "set my gemini key to AIzaSy..." / "use festive animation style by default"
+Example: "use festive animation style by default"

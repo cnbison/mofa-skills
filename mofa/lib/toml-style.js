@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 const toml = require("@iarna/toml");
 const fs = require("fs");
 const path = require("path");
