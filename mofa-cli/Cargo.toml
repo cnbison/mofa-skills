@@ -3,6 +3,10 @@ name = "mofa"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+name = "mofa_lib"
+path = "src/lib.rs"
+
 [[bin]]
 name = "mofa"
 path = "src/main.rs"

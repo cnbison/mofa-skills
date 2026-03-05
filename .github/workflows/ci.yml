@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  rust:
+    name: Rust (check + clippy + test)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mofa-cli
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: mofa-cli
+      - run: cargo check
+      - run: cargo clippy -- -D warnings
+      - run: cargo test
+
+  js:
+    name: Node.js (install + lint)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mofa
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci

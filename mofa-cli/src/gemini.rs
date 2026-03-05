@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 use eyre::{Result, WrapErr};
 use serde_json::{json, Value};
 use std::path::Path;
@@ -54,12 +56,15 @@ impl GeminiClient {
         let mut config: Value = json!({
             "responseModalities": ["IMAGE", "TEXT"]
         });
-        if let Some(size) = image_size {
-            let ar = aspect_ratio.unwrap_or("16:9");
-            config["imageConfig"] = json!({
-                "aspectRatio": ar,
-                "imageSize": size,
-            });
+        if image_size.is_some() || aspect_ratio.is_some() {
+            let mut img_config = json!({});
+            if let Some(ar) = aspect_ratio {
+                img_config["aspectRatio"] = json!(ar);
+            }
+            if let Some(size) = image_size {
+                img_config["imageSize"] = json!(size);
+            }
+            config["imageConfig"] = img_config;
         }
 
         // Build parts: optional reference images + text prompt
@@ -126,7 +131,11 @@ impl GeminiClient {
                     }
                 }
                 Err(e) => {
-                    eprintln!("{tag}: error {attempt}/3 — {}", &format!("{e}")[..200.min(format!("{e}").len())]);
+                    // Sanitize error to avoid leaking API key from URL
+                    let msg = format!("{e}");
+                    let safe_msg = msg.replace(&self.api_key, "[REDACTED]");
+                    let truncated: String = safe_msg.chars().take(200).collect();
+                    eprintln!("{tag}: error {attempt}/3 — {truncated}");
                 }
             }
             if attempt < 3 {
@@ -179,7 +188,8 @@ impl GeminiClient {
             }
         });
 
-        let resp = self.http.post(&url).json(&body).send()?;
+        let resp = self.http.post(&url).json(&body).send()
+            .map_err(|e| eyre::eyre!("{}", format!("{e}").replace(&self.api_key, "[REDACTED]")))?;
         let data: Value = resp.json()?;
 
         let raw = data

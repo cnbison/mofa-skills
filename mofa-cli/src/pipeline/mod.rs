@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 pub mod slides;
 pub mod cards;
 pub mod comic;

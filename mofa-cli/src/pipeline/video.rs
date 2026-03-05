@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 use crate::config::MofaConfig;
 use crate::gemini::GeminiClient;
 use crate::style::Style;

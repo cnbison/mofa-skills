@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 use base64::Engine;
 use eyre::Result;
 use serde_json::{json, Value};
@@ -27,6 +29,74 @@ impl OcrWord {
     pub fn height(&self) -> f64 { self.y3.max(self.y4) - self.top() }
     /// Estimated font size in points (height_px / 1.333).
     pub fn font_size_pt(&self) -> f64 { self.height() / 1.333 }
+    /// Bounding box right edge (max x).
+    pub fn right(&self) -> f64 { self.x2.max(self.x3) }
+    /// Bounding box bottom edge (max y).
+    pub fn bottom(&self) -> f64 { self.y3.max(self.y4) }
+    /// Vertical center of the bounding box.
+    pub fn center_y(&self) -> f64 { (self.top() + self.bottom()) / 2.0 }
+    /// Horizontal center of the bounding box.
+    pub fn center_x(&self) -> f64 { (self.left() + self.right()) / 2.0 }
+}
+
+/// Sample the background color around a bounding box by looking at border pixels.
+/// Takes median of border pixel colors to avoid sampling text or edge artifacts.
+fn sample_border_color(
+    img: &image::RgbImage,
+    x0: u32, y0: u32, x1: u32, y1: u32,
+) -> image::Rgb<u8> {
+    let (iw, ih) = (img.width(), img.height());
+    let mut samples: Vec<[u8; 3]> = Vec::new();
+
+    // Sample from a border strip 2-4px outside the bbox
+    let margin = 3u32;
+    let outer_x0 = x0.saturating_sub(margin);
+    let outer_y0 = y0.saturating_sub(margin);
+    let outer_x1 = (x1 + margin).min(iw - 1);
+    let outer_y1 = (y1 + margin).min(ih - 1);
+
+    // Top edge
+    if outer_y0 < y0 {
+        for x in outer_x0..=outer_x1 {
+            let p = img.get_pixel(x, outer_y0);
+            samples.push(p.0);
+        }
+    }
+    // Bottom edge
+    if outer_y1 > y1 {
+        for x in outer_x0..=outer_x1 {
+            let p = img.get_pixel(x, outer_y1);
+            samples.push(p.0);
+        }
+    }
+    // Left edge
+    if outer_x0 < x0 {
+        for y in outer_y0..=outer_y1 {
+            let p = img.get_pixel(outer_x0, y);
+            samples.push(p.0);
+        }
+    }
+    // Right edge
+    if outer_x1 > x1 {
+        for y in outer_y0..=outer_y1 {
+            let p = img.get_pixel(outer_x1, y);
+            samples.push(p.0);
+        }
+    }
+
+    if samples.is_empty() {
+        return image::Rgb([255, 255, 255]); // fallback to white
+    }
+
+    // Median per channel
+    let mut rs: Vec<u8> = samples.iter().map(|s| s[0]).collect();
+    let mut gs: Vec<u8> = samples.iter().map(|s| s[1]).collect();
+    let mut bs: Vec<u8> = samples.iter().map(|s| s[2]).collect();
+    rs.sort();
+    gs.sort();
+    bs.sort();
+    let mid = rs.len() / 2;
+    image::Rgb([rs[mid], gs[mid], bs[mid]])
 }
 
 /// Dashscope API client for Qwen image editing.
@@ -139,7 +209,7 @@ impl DashscopeClient {
 
             return self.download_result(img_url, out_file);
         }
-        unreachable!()
+        Err(eyre::eyre!("Dashscope rate limited after {max_retries} retries"))
     }
 
     /// OCR an image using qwen-vl-ocr, returning word-level bounding boxes.
@@ -240,7 +310,59 @@ impl DashscopeClient {
             eprintln!("  OCR: detected {} text regions", words.len());
             return Ok(words);
         }
-        unreachable!()
+        Err(eyre::eyre!("OCR rate limited after {max_retries} retries"))
+    }
+
+    /// Remove text from an image using OCR + programmatic background fill.
+    ///
+    /// For each OCR-detected text region, samples the surrounding background color
+    /// and fills the text area with it. This is deterministic, fast, and avoids
+    /// AI inpainting artifacts on dense slides.
+    pub fn remove_text(&self, image_path: &Path, out_file: &Path) -> Result<std::path::PathBuf> {
+        // Step 1: OCR to find all text regions
+        let words = self.ocr_image(image_path)?;
+        if words.is_empty() {
+            eprintln!("  remove_text: OCR found no text, copying original");
+            std::fs::copy(image_path, out_file)?;
+            return Ok(out_file.to_path_buf());
+        }
+        eprintln!("  remove_text: OCR found {} text regions, filling with background...", words.len());
+
+        // Step 2: Load image
+        let mut img = image::ImageReader::open(image_path)?
+            .with_guessed_format()?
+            .decode()?
+            .to_rgb8();
+        let (iw, ih) = (img.width(), img.height());
+
+        // Step 3: For each word, sample background color and fill
+        let padding_factor = 0.15;
+        for word in &words {
+            let pad_x = word.width() * padding_factor;
+            let pad_y = word.height() * padding_factor;
+            let x0 = (word.left() - pad_x).max(0.0) as u32;
+            let y0 = (word.top() - pad_y).max(0.0) as u32;
+            let x1 = (word.right() + pad_x).min(iw as f64 - 1.0) as u32;
+            let y1 = (word.bottom() + pad_y).min(ih as f64 - 1.0) as u32;
+
+            // Sample background color from border pixels around the bbox
+            let bg = sample_border_color(&img, x0, y0, x1, y1);
+
+            // Fill the text region with background color
+            for y in y0..=y1 {
+                for x in x0..=x1 {
+                    img.put_pixel(x, y, bg);
+                }
+            }
+        }
+
+        img.save(out_file)?;
+        eprintln!(
+            "  remove_text: done — {} (filled {} regions)",
+            out_file.file_name().unwrap().to_string_lossy(),
+            words.len()
+        );
+        Ok(out_file.to_path_buf())
     }
 
     fn download_result(&self, img_url: &str, out_file: &Path) -> Result<std::path::PathBuf> {

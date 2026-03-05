@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: Apache-2.0
+
+use crate::dashscope::DashscopeClient;
+use crate::deepseek_ocr::DeepSeekOcrClient;
 use crate::gemini::GeminiClient;
 use crate::pptx::TextOverlay;
 use eyre::Result;
@@ -114,43 +118,18 @@ Return ONLY a JSON array."#
         })
         .collect();
 
-    // Step 1: Calibrate font sizes from bbox geometry BEFORE post-processing
     let mut overlays = overlays;
-    calibrate_font_size(&mut overlays);
+    fix_bbox_from_font_size(&mut overlays);
     normalize_font_face(&mut overlays);
 
-    // Step 2: Post-process using calibrated font sizes
     for ov in &mut overlays {
-        let text_str = ov.text.as_deref().unwrap_or("");
-        let fs = ov.font_size.unwrap_or(18.0);
-
-        // Min word width (using calibrated fs)
-        let longest_word = text_str
-            .split(|c: char| c.is_whitespace() || c == '\n')
-            .map(|w| w.len())
-            .max()
-            .unwrap_or(0) as f64;
-        let min_word_w = longest_word * fs * 0.55 / 72.0;
-        if ov.w < min_word_w {
-            ov.w = min_word_w;
-        }
-
-        // Full-width for large centered elements only
+        // Full-width for large centered elements
         if ov.align == "ctr" && ov.w > sw * 0.4 {
-            let margin = 0.3;
-            ov.x = margin;
-            ov.w = sw - 2.0 * margin;
+            ov.x = 0.3;
+            ov.w = sw - 0.6;
         }
-
-        // Clamp
+        // Clamp to slide bounds
         if ov.x + ov.w > sw { ov.w = sw - ov.x; }
-
-        // Min height
-        let line_count = text_str.split('\n').count() as f64;
-        let min_h = (fs / 72.0) * line_count * 1.4 + 0.05;
-        if ov.h < min_h {
-            ov.h = min_h;
-        }
     }
 
     Ok(overlays)
@@ -289,41 +268,17 @@ Return ONLY the JSON array."#
         }
     }
 
-    // Step 1: Calibrate font sizes from bounding box geometry FIRST
-    calibrate_font_size(&mut refined);
+    fix_bbox_from_font_size(&mut refined);
     normalize_font_face(&mut refined);
 
-    // Step 2: Re-apply post-processing using calibrated font sizes
     for ov in &mut refined {
-        let text_str = ov.text.as_deref().unwrap_or("");
-        let fs = ov.font_size.unwrap_or(18.0);
-
-        // Min word width (using calibrated fs)
-        let longest_word = text_str
-            .split(|c: char| c.is_whitespace() || c == '\n')
-            .map(|w| w.len())
-            .max()
-            .unwrap_or(0) as f64;
-        let min_word_w = longest_word * fs * 0.55 / 72.0;
-        if ov.w < min_word_w {
-            ov.w = min_word_w;
-        }
-
-        // Full-width for large centered elements only
+        // Full-width for large centered elements
         if ov.align == "ctr" && ov.w > sw * 0.4 {
             ov.x = 0.3;
             ov.w = sw - 0.6;
         }
-
-        // Clamp
+        // Clamp to slide bounds
         if ov.x + ov.w > sw { ov.w = sw - ov.x; }
-
-        // Min height (using calibrated fs)
-        let line_count = text_str.split('\n').count() as f64;
-        let min_h = (fs / 72.0) * line_count * 1.4 + 0.05;
-        if ov.h < min_h {
-            ov.h = min_h;
-        }
     }
 
     Ok(refined)
@@ -340,13 +295,14 @@ fn get_image_dimensions(image_path: &Path) -> (f64, f64) {
     (1920.0, 1080.0)
 }
 
-/// Calibrate font size from bounding box geometry instead of trusting VQA guesses.
+/// Fix bounding box heights to match VQA font sizes.
 ///
-/// The vision model often overestimates font sizes (especially for small text in tables/cards).
-/// We can compute the correct size from: `h_inches × 72 / (num_lines × line_spacing)`.
-/// PPT default single-line spacing is ~1.15–1.2×. We use 1.2 as a safe middle ground.
-fn calibrate_font_size(overlays: &mut [TextOverlay]) {
-    const LINE_SPACING: f64 = 1.2;
+/// VQA font size guesses are reasonably accurate, but VQA bounding box heights
+/// are systematically too small (~2.9x underestimate due to DPI mismatch +
+/// tight bbox vs em-square). Rather than calibrating font sizes down from bad
+/// heights, we trust font sizes and fix heights to match.
+fn fix_bbox_from_font_size(overlays: &mut [TextOverlay]) {
+    const LINE_SPACING: f64 = 1.3;
 
     for ov in overlays.iter_mut() {
         let text = ov.text.as_deref().unwrap_or("");
@@ -354,28 +310,18 @@ fn calibrate_font_size(overlays: &mut [TextOverlay]) {
             continue;
         }
 
+        let fs = ov.font_size.unwrap_or(18.0);
         let num_lines = text.split('\n').count() as f64;
-        // Geometric font size: how big must the font be to fill the bounding box?
-        let geometric_fs = ov.h * 72.0 / (num_lines * LINE_SPACING);
+        // Expected height: font_size_inches × num_lines × line_spacing
+        let expected_h = (fs / 72.0) * num_lines * LINE_SPACING;
 
-        if geometric_fs < 4.0 || geometric_fs > 120.0 {
-            // Bounding box is unreasonable, keep VQA guess
-            continue;
-        }
-
-        let vqa_fs = ov.font_size.unwrap_or(18.0);
-
-        // If VQA is more than 30% off from geometric, prefer geometric
-        let ratio = vqa_fs / geometric_fs;
-        if ratio > 1.3 || ratio < 0.7 {
+        if expected_h > ov.h {
             eprintln!(
-                "  fontSize calibration: VQA={:.1}pt → geometric={:.1}pt (ratio={:.2}) for {:?}",
-                vqa_fs,
-                geometric_fs,
-                ratio,
-                &text.chars().take(40).collect::<String>()
+                "  bbox fix: h={:.3}\" → {:.3}\" (fs={:.0}pt, {}lines) for {:?}",
+                ov.h, expected_h, fs, num_lines as u32,
+                &text.chars().take(30).collect::<String>()
             );
-            ov.font_size = Some(geometric_fs);
+            ov.h = expected_h;
         }
     }
 }
@@ -412,6 +358,194 @@ fn normalize_font_face(overlays: &mut [TextOverlay]) {
             }
         }
     }
+}
+
+/// Extract text layout — currently delegates to VQA extraction.
+/// Kept as a separate entry point for pipeline compatibility (OCR path).
+pub fn extract_text_layout_ocr(
+    _dashscope: &DashscopeClient,
+    gemini: &GeminiClient,
+    image_path: &Path,
+    sw: f64,
+    sh: f64,
+    vision_model: Option<&str>,
+    style_hint: Option<&str>,
+) -> Result<Vec<TextOverlay>> {
+    extract_text_layout(gemini, image_path, sw, sh, vision_model, style_hint)
+}
+
+/// Extract text layout using DeepSeek-OCR-2 for positions + Gemini VQA for text content & styles.
+///
+/// DeepSeek-OCR-2 provides pixel-accurate bounding boxes via its grounding mode.
+/// Gemini VQA reads the actual text content and visual styles (color, bold, font, alignment)
+/// for each detected region. This hybrid gives accurate positions with correct text.
+pub fn extract_text_layout_deepseek(
+    deepseek: &DeepSeekOcrClient,
+    gemini: &GeminiClient,
+    image_path: &Path,
+    sw: f64,
+    sh: f64,
+    vision_model: Option<&str>,
+) -> Result<Vec<TextOverlay>> {
+    let (_img_w, img_h) = get_image_dimensions(image_path);
+
+    // Step 1: Get text block bounding boxes from DeepSeek-OCR-2
+    let mut blocks = deepseek.ocr_with_grounding(image_path)?;
+    if blocks.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    // De-duplicate overlapping blocks (DeepSeek sometimes emits near-identical bboxes)
+    blocks = dedup_ocr_blocks(blocks);
+    eprintln!("  DeepSeek: {} bounding boxes after dedup", blocks.len());
+
+    // Step 2: Build a position map for Gemini — tell it WHERE each block is,
+    // ask it to read the ACTUAL text and style at each location.
+    let mut block_desc = String::new();
+    for (i, block) in blocks.iter().enumerate() {
+        let xp = block.x1 / 10.0;
+        let yp = block.y1 / 10.0;
+        let wp = (block.x2 - block.x1) / 10.0;
+        let hp = (block.y2 - block.y1) / 10.0;
+        block_desc.push_str(&format!(
+            "[{i}] region at xPct={xp:.1}, yPct={yp:.1}, wPct={wp:.1}, hPct={hp:.1}\n"
+        ));
+    }
+
+    let iw = _img_w as u32;
+    let ih = img_h as u32;
+
+    let prompt = format!(
+        r#"I detected {count} text regions in this {iw}x{ih} slide image using OCR. For each region below, read the EXACT text visible at that location and determine its visual style.
+
+REGIONS (positions as percentage of image dimensions):
+{block_desc}
+For EVERY region, return a JSON object with:
+- "idx": region index
+- "text": the EXACT text visible at this location (use \n for multi-line). Read carefully — do NOT guess or paraphrase. If a region contains NO readable text (just icons/graphics), set text to "".
+- "fontSize": font size in points (1pt ≈ 1.333px)
+- "color": hex RGB without # (e.g. "FFFFFF" for white, "C8102E" for red)
+- "bold": true if bold/heavy weight
+- "fontFace": best font match (e.g. "Arial", "Microsoft YaHei")
+- "align": "ctr" if centered, "l" for left, "r" for right
+
+ALSO: if you see any significant text in the image that is NOT covered by the regions above, add extra entries with "idx": -1 and include "xPct", "yPct", "wPct", "hPct" (percentage of image dimensions) for the position.
+
+Return ONLY a JSON array."#,
+        count = blocks.len(),
+    );
+
+    let vqa_result = gemini.vision_qa(image_path, &prompt, vision_model)?;
+    let entries: Vec<Value> = serde_json::from_value(vqa_result)?;
+
+    // Step 3: Merge DeepSeek positions + VQA text/styles
+    let mut overlays: Vec<TextOverlay> = Vec::new();
+
+    for entry in &entries {
+        let idx = entry.get("idx").and_then(|i| i.as_i64()).unwrap_or(999);
+
+        let text = entry.get("text").and_then(|t| t.as_str()).unwrap_or("").to_string();
+        if text.is_empty() {
+            continue;
+        }
+
+        let (x, y, w, h) = if idx >= 0 && (idx as usize) < blocks.len() {
+            // Position from DeepSeek grounding (accurate)
+            let block = &blocks[idx as usize];
+            (
+                block.x1 / 1000.0 * sw,
+                block.y1 / 1000.0 * sh,
+                (block.x2 - block.x1) / 1000.0 * sw,
+                (block.y2 - block.y1) / 1000.0 * sh,
+            )
+        } else if idx == -1 {
+            // Extra block from VQA — position from VQA percentages
+            let xp = entry.get("xPct").and_then(|n| n.as_f64()).unwrap_or(0.0);
+            let yp = entry.get("yPct").and_then(|n| n.as_f64()).unwrap_or(0.0);
+            let wp = entry.get("wPct").and_then(|n| n.as_f64()).unwrap_or(10.0);
+            let hp = entry.get("hPct").and_then(|n| n.as_f64()).unwrap_or(5.0);
+            let preview: String = text.chars().take(20).collect();
+            eprintln!("  VQA extra block: \"{preview}\" at ({xp:.1}%, {yp:.1}%)");
+            (xp / 100.0 * sw, yp / 100.0 * sh, wp / 100.0 * sw, hp / 100.0 * sh)
+        } else {
+            continue;
+        };
+
+        // Text + style from VQA (accurate content)
+        let font_size = entry.get("fontSize").and_then(|n| n.as_f64());
+        let color = entry.get("color").and_then(|c| c.as_str()).unwrap_or("333333").to_string();
+        let bold = entry.get("bold").and_then(|b| b.as_bool()).unwrap_or(false);
+        let font_face = entry.get("fontFace").and_then(|f| f.as_str()).map(String::from);
+        let align = entry.get("align").and_then(|a| a.as_str()).unwrap_or("l").to_string();
+
+        overlays.push(TextOverlay {
+            text: Some(text),
+            x, y, w, h,
+            font_size,
+            color,
+            bold,
+            italic: false,
+            font_face,
+            align,
+            valign: String::new(),
+            rotate: None,
+            runs: None,
+        });
+    }
+
+    eprintln!(
+        "  DeepSeek+VQA: {} blocks (positions: DeepSeek, text+style: VQA)",
+        overlays.len()
+    );
+
+    fix_bbox_from_font_size(&mut overlays);
+    normalize_font_face(&mut overlays);
+
+    for ov in &mut overlays {
+        if ov.align == "ctr" && ov.w > sw * 0.4 {
+            ov.x = 0.3;
+            ov.w = sw - 0.6;
+        }
+        if ov.x + ov.w > sw {
+            ov.w = sw - ov.x;
+        }
+    }
+
+    Ok(overlays)
+}
+
+/// De-duplicate OCR blocks with high spatial overlap.
+/// DeepSeek-OCR-2 sometimes emits near-identical bounding boxes for the same region.
+fn dedup_ocr_blocks(blocks: Vec<crate::deepseek_ocr::OcrBlock>) -> Vec<crate::deepseek_ocr::OcrBlock> {
+    use crate::deepseek_ocr::OcrBlock;
+
+    let mut kept: Vec<OcrBlock> = Vec::new();
+    for block in blocks {
+        let dominated = kept.iter().any(|existing| {
+            // Check if bboxes overlap significantly (IoU-like check)
+            let ix1 = block.x1.max(existing.x1);
+            let iy1 = block.y1.max(existing.y1);
+            let ix2 = block.x2.min(existing.x2);
+            let iy2 = block.y2.min(existing.y2);
+
+            if ix1 >= ix2 || iy1 >= iy2 {
+                return false; // No overlap
+            }
+
+            let inter = (ix2 - ix1) * (iy2 - iy1);
+            let area_new = (block.x2 - block.x1) * (block.y2 - block.y1);
+            let area_existing = (existing.x2 - existing.x1) * (existing.y2 - existing.y1);
+            let smaller_area = area_new.min(area_existing);
+
+            // If intersection covers >70% of the smaller block, it's a duplicate
+            smaller_area > 0.0 && inter / smaller_area > 0.7
+        });
+
+        if !dominated {
+            kept.push(block);
+        }
+    }
+    kept
 }
 
 /// The "no text" instruction appended to prompts for clean image regeneration.

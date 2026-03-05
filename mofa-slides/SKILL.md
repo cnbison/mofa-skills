@@ -1,101 +1,119 @@
 ---
 name: mofa-slides
-description: "AI-generated visual presentations with full-bleed Gemini images. Triggers: mofa, mofa ppt, mofa deck, slides, 幻灯片, generative slides, build a mofa ppt, 用mofa做PPT, AI deck. For classical editable text/shape slides, use the 'pptx' skill instead."
-requires_bins:
-  - node
-requires_env:
-  - GEMINI_API_KEY
+description: "AI-generated visual presentations with full-bleed Gemini images. Triggers: mofa, mofa ppt, mofa deck, slides, 幻灯片, generative slides, build a mofa ppt, 用mofa做PPT, AI deck, 做个PPT, make slides."
+always: true
+requires_env: GEMINI_API_KEY
 ---
 
 # mofa-slides
 
-Engine: `~/.crew/skills/mofa/lib/engine.js`
-Styles: `~/.crew/skills/mofa-slides/styles/*.toml`
-Config: `~/.crew/skills/mofa/config.json`
+CLI: `mofa slides`
+Styles: `mofa-slides/styles/*.toml`
+Config: `mofa/config.json`
 
-## Quick Start
+## User Guide — How to Decide
 
-```javascript
-const { run } = require("~/.crew/skills/mofa/lib/engine");
-const { loadStyle } = require("~/.crew/skills/mofa/lib/toml-style");
+### Mode: Image vs Editable
 
-const style = loadStyle("~/.crew/skills/mofa-slides/styles/nb-pro.toml");
+| User says | Mode | CLI flag |
+|-----------|------|----------|
+| "做PPT", "make slides" | Image (default) | *(none)* |
+| "**可编辑**的PPT", "**editable** slides" | Editable PPTX | `--auto-layout` |
+| "把PDF转成**可编辑**PPT" | Editable + source_image | `--auto-layout` + `source_image` per slide |
 
-const slides = [
-  { style: "cover", prompt: 'TITLE: "项目报告"\nCentered vertically.' },
-  { style: "normal", prompt: 'TITLE: "核心发现"\n3 cards: Revenue +47%, Efficiency 3x, Scale 10M+' },
-  { style: "data", prompt: 'TITLE: "数据对比"\nTable comparing 3 products across 5 metrics' },
-];
+**Rule: if user says "可编辑" or "editable", add `--auto-layout`. Otherwise don't.**
 
-run({
-  slideDir: "slides-output",
-  outFile: "Report.pptx",
-  slides,
-  getStyle: style.getStyle,
-  concurrency: 5,
-  imageSize: "2K",
-});
+Image mode bakes text into AI-generated images (fast, beautiful, not editable).
+Editable mode extracts text, cleans the background, overlays editable text boxes (slower, requires DASHSCOPE_API_KEY).
+
+### Style: How Users Choose
+
+| User says | `--style` value |
+|-----------|-----------------|
+| 红色企业、华为风、商务红 | `agentic-enterprise-red` |
+| 紫色企业、咨询风、McKinsey | `agentic-enterprise` |
+| 极简、北欧、MUJI、IKEA | `nordic-minimal` |
+| 专业、商务、正式 | `nb-pro` |
+| 科幻、赛博朋克、Blade Runner | `nb-br` |
+| 暗色、社区、开源社区 | `dark-community` |
+| 学术、科研、论文、study notes | `what-is-life` |
+| 开源、可爱、卡通鲸鱼 | `opensource` |
+| 暖色、琥珀、电影感 | `cc-research` |
+| 产品发布、DJI、大疆 | `vlinka-dji` |
+| 多品牌对比、公司对比 | `multi-brand` |
+| 简笔画、小人、greeting | `relevant` |
+| 策略、咨询、薰衣草 | `tectonic` |
+| 开源企业、红黑 | `openclaw-red` |
+| 丰子恺、水墨、童趣、宣纸 | `fengzikai` |
+| 岭南、国画、水彩、花鸟 | `lingnan` |
+| 会议、峰会、conference、GOBI、开源峰会 | `gobi` |
+| "有哪些模板？" / "list styles" | 列出上面所有选项 |
+| *(不指定)* | `nb-pro` (default) |
+
+**Rule: map user's描述 to the closest `--style` value. If unsure, use `nb-pro`.**
+
+## CLI Usage
+
+```bash
+# Image mode (default)
+mofa slides --style nb-pro --out deck.pptx --slide-dir /tmp/slides -i slides.json
+
+# Editable PPTX mode
+mofa slides --style nb-pro --auto-layout --out deck.pptx --slide-dir /tmp/slides -i slides.json
 ```
 
-Run: `node generate-deck.js`
+### Input JSON
 
-## 14 Built-in Styles
+```json
+[
+  { "prompt": "TITLE: \"项目报告\"\nCentered vertically.", "style": "cover" },
+  { "prompt": "TITLE: \"核心发现\"\n3 cards: Revenue +47%, Efficiency 3x", "style": "normal" },
+  { "prompt": "TITLE: \"数据对比\"\nTable comparing 3 products", "style": "data" }
+]
+```
 
-| Style | Theme | Best For |
-|-------|-------|----------|
-| `tectonic` | Lavender gradient, whale watermark | Consulting, strategy |
-| `nb-br` | Blade Runner dark cinematic | Sci-fi, cinematic |
-| `nb-pro` | Professional purple | Business presentations |
-| `nordic-minimal` | Pure white, red accent, Muji/IKEA | Minimalist, modern |
-| `cc-research` | Golden hour, warm amber | Research, warm cinematic |
-| `dark-community` | Corporate blue, AI orbs | Open source, community |
-| `agentic-enterprise` | Purple wireframe 4K | Enterprise AI consulting |
-| `agentic-enterprise-red` | Red wireframe 4K | Enterprise AI (Huawei-style) |
-| `multi-brand` | Multi-company branded | Tech company comparisons |
-| `relevant` | Ultra-minimal egg-head figure | Brand greeting cards |
-| `vlinka-dji` | Dark cinematic, cyan accents | Product launches (DJI-style) |
-| `what-is-life` | Science wireframes, lavender | Academic, study notes |
-| `opensource` | Lavender, cute cartoon whale | Open source community |
-| `openclaw-red` | Red/black with claw motifs | Open source (corporate) |
+Each slide object:
 
-## API: run(config)
+| Field | Type | Description |
+|-------|------|-------------|
+| `prompt` | string | Required. Slide content description |
+| `style` | string | Variant within the style (e.g. "cover", "normal", "data", "warm") |
+| `auto_layout` | bool | Per-slide override for editable mode |
+| `images` | string[] | Reference image paths for style guidance |
+| `source_image` | string | Existing image to use as-is (PDF-to-PPTX) |
+| `gen_model` | string | Per-slide model override |
 
-| Param | Type | Default | Description |
-|-------|------|---------|-------------|
-| `slideDir` | string | required | PNG cache directory |
-| `outFile` | string | required | Output PPTX filename |
-| `slides` | array | required | `[{ style, prompt, texts?, autoLayout?, tables? }]` |
-| `getStyle` | function | required | `(tag) => promptString` |
-| `concurrency` | number | 5 | Parallel workers (1-20) |
-| `imageSize` | string | - | `"1K"` / `"2K"` / `"4K"` |
-| `genModel` | string | gemini-3-pro-image-preview | Gemini model for generation |
-| `visionModel` | string | gemini-2.5-flash | Vision model for autoLayout QA |
+## CLI Flags
 
-### Three Text Modes
-
-| Mode | Usage | Editable? | When |
-|------|-------|-----------|------|
-| `autoLayout: true` | AI decides positions | Yes | Most slides (recommended) |
-| `texts: [...]` | Manual coordinates | Yes | Pixel-perfect control |
-| *(neither)* | Text baked in image | No | Artistic/calligraphic text |
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--style` | `nb-pro` | Style name (see table above) |
+| `--out` / `-o` | required | Output PPTX file path |
+| `--slide-dir` | required | Directory for intermediate PNGs |
+| `--auto-layout` | false | Enable editable text mode for ALL slides |
+| `--concurrency` | 5 | Parallel generation (1-20) |
+| `--image-size` | - | "1K" / "2K" / "4K" |
+| `--gen-model` | gemini-3-pro-image-preview | Image generation model |
+| `--vision-model` | gemini-2.5-flash | Vision model for text extraction |
+| `--refine` | false | Use Qwen-Edit for text cleanup |
+| `-i` / `--input` | stdin | Input JSON file |
 
 ## Config
 
-Users can set API keys and preferences via chat. Read or edit `~/.crew/skills/mofa/config.json`.
+`mofa/config.json`:
 
-**API keys** — two formats supported:
-- `"env:GEMINI_API_KEY"` — read from environment variable
-- `"AIzaSy..."` — literal key value (set via chat: "set my gemini key to AIzaSy...")
+```json
+{
+  "api_keys": {
+    "gemini": "env:GEMINI_API_KEY",
+    "dashscope": "env:DASHSCOPE_API_KEY"
+  },
+  "gen_model": "gemini-3-pro-image-preview",
+  "vision_model": "gemini-2.5-flash",
+  "defaults": {
+    "slides": { "style": "nb-pro", "image_size": "2K", "concurrency": 5 }
+  }
+}
+```
 
-**Models** — configurable at top level:
-- `gen_model`: image generation model (default: `gemini-3-pro-image-preview`)
-- `vision_model`: vision QA for autoLayout (default: `gemini-2.5-flash`)
-- `edit_model`: Qwen-Edit model for refinement
-
-**Defaults** — `defaults.slides.*`: `style`, `image_size`, `concurrency`, `auto_layout`
-
-Example chat commands:
-- "show my mofa config" → read config.json
-- "set my gemini key to AIzaSy..." → update `api_keys.gemini`
-- "use agentic-enterprise style by default" → update `defaults.slides.style`
-- "switch to gemini-2.5-flash for generation" → update `gen_model`
+DASHSCOPE_API_KEY is only needed for `--auto-layout` (editable mode).

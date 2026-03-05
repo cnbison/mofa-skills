@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 use eyre::{bail, Result};
 use serde::Deserialize;
 use std::io::Write;
@@ -132,13 +134,27 @@ fn build_text_shape_xml(overlay: &TextOverlay, shape_id: u32) -> String {
         xml
     } else {
         let text = overlay.text.as_deref().unwrap_or("");
-        build_run_xml(text, font_face, font_size, &overlay.color, overlay.bold, overlay.italic)
+        let lines: Vec<&str> = text.split('\n').collect();
+        if lines.len() <= 1 {
+            build_run_xml(text, font_face, font_size, &overlay.color, overlay.bold, overlay.italic)
+        } else {
+            // Multi-line: each line becomes a separate <a:p> paragraph
+            let mut xml = String::new();
+            for (i, line) in lines.iter().enumerate() {
+                if i > 0 {
+                    // Close previous paragraph, open new one
+                    xml.push_str(&format!(r#"</a:p><a:p><a:pPr algn="{align}" indent="0" marL="0"><a:buNone/></a:pPr>"#));
+                }
+                xml.push_str(&build_run_xml(line, font_face, font_size, &overlay.color, overlay.bold, overlay.italic));
+            }
+            xml
+        }
     };
 
     let end_sz = (font_size * PT_TO_HPTS) as i64;
 
     format!(
-        r#"<p:sp><p:nvSpPr><p:cNvPr id="{shape_id}" name="Text {shape_id}"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm{rotation}><a:off x="{x}" y="{y}"/><a:ext cx="{w}" cy="{h}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/><a:ln/></p:spPr><p:txBody><a:bodyPr wrap="square" rtlCol="0" anchor="{anchor}"/><a:lstStyle/><a:p><a:pPr algn="{align}" indent="0" marL="0"><a:buNone/></a:pPr>{para_content}<a:endParaRPr lang="en-US" sz="{end_sz}" dirty="0"/></a:p></p:txBody></p:sp>"#
+        r#"<p:sp><p:nvSpPr><p:cNvPr id="{shape_id}" name="Text {shape_id}"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm{rotation}><a:off x="{x}" y="{y}"/><a:ext cx="{w}" cy="{h}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/><a:ln/></p:spPr><p:txBody><a:bodyPr wrap="square" rtlCol="0" anchor="{anchor}" lIns="0" tIns="0" rIns="0" bIns="0"/><a:lstStyle/><a:p><a:pPr algn="{align}" indent="0" marL="0"><a:buNone/></a:pPr>{para_content}<a:endParaRPr lang="en-US" sz="{end_sz}" dirty="0"/></a:p></p:txBody></p:sp>"#
     )
 }
 

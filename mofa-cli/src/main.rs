@@ -1,5 +1,8 @@
+// SPDX-License-Identifier: Apache-2.0
+
 mod config;
 mod dashscope;
+mod deepseek_ocr;
 mod gemini;
 mod image_util;
 mod layout;
@@ -52,6 +55,9 @@ enum Commands {
         /// Vision model for autoLayout text extraction
         #[arg(long)]
         vision_model: Option<String>,
+        /// Enable editable text mode: extract text, clean background, overlay text boxes
+        #[arg(long)]
+        auto_layout: bool,
         /// Use Qwen-Edit to remove text from reference images (cleaner output)
         #[arg(long)]
         refine: bool,
@@ -221,6 +227,7 @@ fn main() -> Result<()> {
             gen_model,
             ref_image_size,
             vision_model,
+            auto_layout,
             refine,
             input,
         } => {
@@ -229,7 +236,14 @@ fn main() -> Result<()> {
             let loaded_style = style::load_style(&style_file)?;
 
             let json = read_input(input.as_ref())?;
-            let slides: Vec<pipeline::slides::SlideInput> = serde_json::from_str(&json)?;
+            let mut slides: Vec<pipeline::slides::SlideInput> = serde_json::from_str(&json)?;
+
+            // --auto-layout flag overrides all slides
+            if auto_layout {
+                for slide in &mut slides {
+                    slide.auto_layout = true;
+                }
+            }
 
             pipeline::slides::run(
                 &slide_dir,

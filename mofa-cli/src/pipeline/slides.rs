@@ -1,7 +1,13 @@
+// SPDX-License-Identifier: Apache-2.0
+
 use crate::config::MofaConfig;
 use crate::dashscope::DashscopeClient;
+use crate::deepseek_ocr::DeepSeekOcrClient;
 use crate::gemini::GeminiClient;
-use crate::layout::{extract_text_layout, refine_text_layout, NO_TEXT_INSTRUCTION, SH, SW};
+use crate::layout::{
+    extract_text_layout, extract_text_layout_deepseek, extract_text_layout_ocr,
+    refine_text_layout, NO_TEXT_INSTRUCTION, SH, SW,
+};
 use crate::pptx::{self, SlideData, TextOverlay};
 use crate::style::Style;
 use eyre::Result;
@@ -45,20 +51,30 @@ pub fn run(
         .ok_or_else(|| eyre::eyre!("Gemini API key required"))?;
     let gemini = GeminiClient::new(gemini_key);
 
-    // Build optional Dashscope client for Qwen-Edit refinement
-    let dashscope = if refine_with_qwen {
-        match cfg.dashscope_key() {
-            Some(key) => {
-                eprintln!("Qwen-Edit enabled for clean image generation");
-                Some(DashscopeClient::new(key))
-            }
-            None => {
-                eprintln!("Warning: --refine requested but DASHSCOPE_API_KEY not set, falling back to Gemini");
-                None
-            }
+    // Build DeepSeek-OCR-2 client for local OCR with grounding
+    let deepseek_ocr = match cfg.deepseek_ocr_url() {
+        Some(url) => {
+            eprintln!("DeepSeek-OCR-2 enabled: {url}");
+            Some(DeepSeekOcrClient::new(url))
         }
-    } else {
-        None
+        None => None,
+    };
+
+    // Build Dashscope client for OCR text extraction + optional Qwen-Edit refinement
+    let dashscope = match cfg.dashscope_key() {
+        Some(key) => {
+            eprintln!(
+                "Dashscope enabled (OCR{})",
+                if refine_with_qwen { " + Qwen-Edit" } else { "" }
+            );
+            Some(DashscopeClient::new(key))
+        }
+        None => {
+            if refine_with_qwen {
+                eprintln!("Warning: --refine requested but DASHSCOPE_API_KEY not set");
+            }
+            None
+        }
     };
 
     std::fs::create_dir_all(slide_dir)?;
@@ -81,11 +97,12 @@ pub fn run(
     pool.scope(|s| {
         for idx in 0..total {
             let gemini = &gemini;
+            let dashscope = &dashscope;
+            let deepseek_ocr = &deepseek_ocr;
             let ref_paths = Arc::clone(&ref_paths);
             let extracted_texts = Arc::clone(&extracted_texts);
             let direct_paths = Arc::clone(&direct_paths);
             let slide = &slides[idx];
-            let slide_dir = slide_dir;
 
             s.spawn(move |_| {
                 let variant = slide.style.as_deref().unwrap_or("normal");
@@ -141,53 +158,103 @@ pub fn run(
                     };
 
                     if ref_ready {
-                        // Phase 2: Vision QA — extract text positions
-                        match extract_text_layout(
-                            gemini,
-                            &ref_file,
-                            SW,
-                            SH,
-                            vision_model,
-                            Some(prefix),
-                        ) {
-                            Ok(texts) => {
+                        // Phase 2: Extract text positions
+                        // Priority: DeepSeek-OCR-2 (local, grounding) > Dashscope OCR > Gemini VQA
+                        let extraction_result = if let Some(ref ds_ocr) = deepseek_ocr {
+                            match extract_text_layout_deepseek(
+                                ds_ocr, gemini, &ref_file, SW, SH, vision_model,
+                            ) {
+                                Ok(texts) if !texts.is_empty() => {
+                                    eprintln!(
+                                        "Slide {}: DeepSeek-OCR extracted {} text blocks",
+                                        idx + 1, texts.len()
+                                    );
+                                    Ok((texts, true)) // true = used OCR (skip refinement)
+                                }
+                                Ok(_) => {
+                                    eprintln!(
+                                        "Slide {}: DeepSeek-OCR returned empty, falling back",
+                                        idx + 1
+                                    );
+                                    // Fall through to Dashscope/VQA
+                                    Err(eyre::eyre!("empty"))
+                                }
+                                Err(e) => {
+                                    eprintln!(
+                                        "Slide {}: DeepSeek-OCR failed ({e}), falling back",
+                                        idx + 1
+                                    );
+                                    Err(e)
+                                }
+                            }
+                        } else {
+                            Err(eyre::eyre!("no deepseek"))
+                        };
+
+                        // Fallback: Dashscope OCR or Gemini VQA
+                        let extraction_result = if extraction_result.is_ok() {
+                            extraction_result
+                        } else if let Some(ref ds) = dashscope {
+                            match extract_text_layout_ocr(
+                                ds, gemini, &ref_file, SW, SH, vision_model, Some(prefix),
+                            ) {
+                                Ok(texts) => {
+                                    eprintln!(
+                                        "Slide {}: Dashscope OCR extracted {} text blocks",
+                                        idx + 1, texts.len()
+                                    );
+                                    Ok((texts, true))
+                                }
+                                Err(e) => {
+                                    eprintln!(
+                                        "Slide {}: Dashscope OCR failed ({e}), falling back to VQA",
+                                        idx + 1
+                                    );
+                                    extract_text_layout(
+                                        gemini, &ref_file, SW, SH, vision_model, Some(prefix),
+                                    ).map(|t| (t, false))
+                                }
+                            }
+                        } else {
+                            extract_text_layout(
+                                gemini, &ref_file, SW, SH, vision_model, Some(prefix),
+                            ).map(|t| (t, false))
+                        };
+
+                        match extraction_result {
+                            Ok((texts, used_ocr)) => {
                                 eprintln!(
-                                    "Slide {}: extracted {} text elements",
-                                    idx + 1,
-                                    texts.len()
+                                    "Slide {}: extracted {} text elements ({})",
+                                    idx + 1, texts.len(),
+                                    if used_ocr { "OCR" } else { "VQA" }
                                 );
-                                // Phase 2.5: Refinement — draw boxes, ask model to correct
-                                let texts = match refine_text_layout(
-                                    gemini,
-                                    &ref_file,
-                                    &texts,
-                                    SW,
-                                    SH,
-                                    vision_model,
-                                ) {
-                                    Ok(refined) => {
-                                        eprintln!(
-                                            "Slide {}: refined {} text elements",
-                                            idx + 1,
-                                            refined.len()
-                                        );
-                                        refined
+                                // Only refine if VQA was used (OCR positions are precise)
+                                let texts = if !used_ocr {
+                                    match refine_text_layout(
+                                        gemini, &ref_file, &texts, SW, SH, vision_model,
+                                    ) {
+                                        Ok(refined) => {
+                                            eprintln!(
+                                                "Slide {}: refined {} text elements",
+                                                idx + 1, refined.len()
+                                            );
+                                            refined
+                                        }
+                                        Err(e) => {
+                                            eprintln!(
+                                                "Slide {}: refinement failed ({e}), using initial",
+                                                idx + 1
+                                            );
+                                            texts
+                                        }
                                     }
-                                    Err(e) => {
-                                        eprintln!(
-                                            "Slide {}: refinement failed ({e}), using initial extraction",
-                                            idx + 1
-                                        );
-                                        texts
-                                    }
+                                } else {
+                                    texts
                                 };
                                 extracted_texts.lock().unwrap()[idx] = Some(texts);
                             }
                             Err(e) => {
-                                eprintln!(
-                                    "Slide {}: vision QA failed — {e}",
-                                    idx + 1
-                                );
+                                eprintln!("Slide {}: text extraction failed — {e}", idx + 1);
                             }
                         }
                         ref_paths.lock().unwrap()[idx] = Some(ref_file);
@@ -230,35 +297,34 @@ pub fn run(
             continue;
         };
 
-        let has_source = slides[idx].source_image.is_some();
         let padded = format!("{:02}", idx + 1);
         let out_path = slide_dir.join(format!("slide-{padded}.png"));
 
-        // For source_image slides: skip Qwen-Edit (it destroys graphics/diagrams).
-        // Use Gemini regeneration with the source as reference image instead.
-        if !has_source {
-            // Try Qwen-Edit first if enabled (only for generated images)
-            if let Some(ref ds) = dashscope {
-                eprintln!("Slide {}: removing text with Qwen-Edit...", idx + 1);
-                match ds.refine_image(
-                    ref_path,
-                    "Remove ONLY readable text characters (Chinese, English, numbers, punctuation) from this image. \
-                     Replace each removed text area with the immediate surrounding background color. \
-                     DO NOT touch any of these non-text elements — they must remain EXACTLY unchanged: \
-                     wireframe line-art icons, geometric shapes, card borders, divider lines, arrows, \
-                     circuit patterns, network node illustrations, decorative patterns, color gradients, \
-                     small icon graphics. \
-                     IMPORTANT: Small detailed wireframe illustrations and icons are NOT text — leave them alone. \
-                     Only erase clearly readable words and characters.",
-                    &out_path,
-                    Some(cfg.edit_model()),
-                ) {
-                    Ok(p) => {
-                        final_paths[idx] = Some(p);
-                        continue;
-                    }
-                    Err(e) => {
-                        eprintln!("Slide {}: Qwen-Edit failed ({e}), falling back to Gemini", idx + 1);
+        // OCR-guided mask edit: OCR → mask → wanx2.1 inpainting.
+        // Falls back to Qwen-Edit, then Gemini regeneration.
+        if let Some(ref ds) = dashscope {
+            eprintln!("Slide {}: removing text with OCR-guided mask edit...", idx + 1);
+            match ds.remove_text(ref_path, &out_path) {
+                Ok(p) => {
+                    final_paths[idx] = Some(p);
+                    continue;
+                }
+                Err(e) => {
+                    eprintln!("Slide {}: mask edit failed ({e}), trying Qwen-Edit...", idx + 1);
+                    match ds.refine_image(
+                        ref_path,
+                        "Remove all readable text, numbers, and punctuation from this image. \
+                         Replace removed text with surrounding background. Keep all non-text elements.",
+                        &out_path,
+                        Some(cfg.edit_model()),
+                    ) {
+                        Ok(p) => {
+                            final_paths[idx] = Some(p);
+                            continue;
+                        }
+                        Err(e2) => {
+                            eprintln!("Slide {}: Qwen-Edit also failed ({e2}), falling back to Gemini", idx + 1);
+                        }
                     }
                 }
             }

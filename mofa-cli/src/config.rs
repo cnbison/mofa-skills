@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 #![allow(dead_code)]
 
 use eyre::{Result, WrapErr};
@@ -14,6 +16,8 @@ pub struct MofaConfig {
     pub gen_model: Option<String>,
     pub vision_model: Option<String>,
     pub edit_model: Option<String>,
+    /// Local DeepSeek-OCR-2 endpoint URL (e.g. "http://localhost:8080/v1/ocr")
+    pub deepseek_ocr_url: Option<String>,
 }
 
 #[derive(Deserialize, Debug, Default)]
@@ -82,7 +86,10 @@ impl MofaConfig {
     pub fn load_default(mofa_root: &Path) -> Self {
         let path = mofa_root.join("mofa").join("config.json");
         if path.exists() {
-            Self::load(&path).unwrap_or_default()
+            Self::load(&path).unwrap_or_else(|e| {
+                eprintln!("Warning: failed to parse {}: {e}", path.display());
+                Self::default()
+            })
         } else {
             Self::default()
         }
@@ -118,6 +125,14 @@ impl MofaConfig {
 
     pub fn edit_model(&self) -> &str {
         self.edit_model.as_deref().unwrap_or("qwen-image-edit-max-2026-01-16")
+    }
+
+    /// Resolve the DeepSeek-OCR-2 endpoint URL from config or env.
+    pub fn deepseek_ocr_url(&self) -> Option<String> {
+        if let Some(ref url) = self.deepseek_ocr_url {
+            return Some(resolve_key(url).unwrap_or_else(|| url.clone()));
+        }
+        std::env::var("DEEPSEEK_OCR_URL").ok()
     }
 }
 
