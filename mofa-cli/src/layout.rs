@@ -121,6 +121,8 @@ Return ONLY a JSON array."#
     let mut overlays = overlays;
     fix_bbox_from_font_size(&mut overlays);
     normalize_font_face(&mut overlays);
+    rescale_x_positions(&mut overlays, sw);
+    align_columns(&mut overlays, sw, sh);
 
     for ov in &mut overlays {
         // Full-width for large centered elements
@@ -129,6 +131,7 @@ Return ONLY a JSON array."#
             ov.w = sw - 0.6;
         }
         // Clamp to slide bounds
+        if ov.x < 0.0 { ov.x = 0.0; }
         if ov.x + ov.w > sw { ov.w = sw - ov.x; }
     }
 
@@ -356,6 +359,205 @@ fn normalize_font_face(overlays: &mut [TextOverlay]) {
             if normalized != face.as_str() {
                 ov.font_face = Some(normalized.to_string());
             }
+        }
+    }
+}
+
+/// Global coordinate transform: rescale x positions to fill the slide content area.
+///
+/// VQA positions have good relative accuracy but poor absolute accuracy — positions
+/// are systematically compressed (elements closer together than reality). This maps
+/// the VQA content bounding box to the expected slide content area, stretching
+/// positions proportionally. Local alignment is perfectly preserved.
+fn rescale_x_positions(overlays: &mut [TextOverlay], sw: f64) {
+    if overlays.len() < 4 {
+        return;
+    }
+
+    // Find VQA content extent (x dimension)
+    let vqa_min = overlays
+        .iter()
+        .map(|ov| ov.x)
+        .fold(f64::INFINITY, f64::min);
+    let vqa_max = overlays
+        .iter()
+        .map(|ov| ov.x + ov.w)
+        .fold(f64::NEG_INFINITY, f64::max);
+    let vqa_extent = vqa_max - vqa_min;
+
+    if vqa_extent < 1.0 {
+        return;
+    }
+
+    // Expected content area
+    let margin = 0.3;
+    let expected_min = margin;
+    let expected_max = sw - margin;
+    let expected_extent = expected_max - expected_min;
+
+    // Only rescale if VQA extent is significantly smaller than expected
+    // (> 5% compression). Otherwise VQA extent is plausible.
+    let ratio = expected_extent / vqa_extent;
+    if ratio < 1.05 {
+        return;
+    }
+
+    eprintln!(
+        "  x-rescale: VQA extent {vqa_min:.2}\"..{vqa_max:.2}\" ({vqa_extent:.2}\") → \
+         {expected_min:.2}\"..{expected_max:.2}\" ({expected_extent:.2}\"), scale={ratio:.3}"
+    );
+
+    // Apply affine transform: new_x = (old_x - vqa_min) / vqa_extent * expected_extent + expected_min
+    for ov in overlays.iter_mut() {
+        ov.x = (ov.x - vqa_min) / vqa_extent * expected_extent + expected_min;
+        ov.w *= ratio;
+    }
+}
+
+/// Detect columns of text and align them.
+///
+/// VQA returns positions with systematic bias and too-narrow widths.
+/// This detects groups of overlays at similar x positions (columns), snaps each
+/// group to the leftmost x, and expands widths to fill the column gap.
+///
+/// Uses gap-based clustering: sort x positions, find the largest gaps between
+/// groups, and split at those gaps. This correctly handles cases where VQA
+/// places elements within the same column at different x offsets.
+fn align_columns(overlays: &mut [TextOverlay], sw: f64, _sh: f64) {
+    if overlays.len() < 6 {
+        return;
+    }
+
+    // Collect (index, x) for non-title elements
+    let mut items: Vec<(usize, f64)> = overlays
+        .iter()
+        .enumerate()
+        .filter(|(_, ov)| {
+            // Skip full-width centered elements (titles, subtitles)
+            !(ov.align == "ctr" && ov.w > sw * 0.3)
+        })
+        .map(|(i, ov)| (i, ov.x))
+        .collect();
+
+    if items.len() < 6 {
+        return;
+    }
+
+    items.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+
+    // Step 1: Initial fine-grained grouping (0.5" tolerance)
+    let col_tol = 0.5;
+    let mut groups: Vec<(f64, Vec<usize>)> = Vec::new(); // (median_x, indices)
+    for &(idx, x) in &items {
+        let added = groups.iter_mut().any(|(gx, members)| {
+            if (x - *gx).abs() < col_tol {
+                members.push(idx);
+                true
+            } else {
+                false
+            }
+        });
+        if !added {
+            groups.push((x, vec![idx]));
+        }
+    }
+
+    // Sort groups by x and compute median x for each
+    groups.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+    let mut group_medians: Vec<f64> = Vec::new();
+    for (_, members) in &groups {
+        let mut xs: Vec<f64> = members.iter().map(|&i| overlays[i].x).collect();
+        xs.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        group_medians.push(xs[xs.len() / 2]);
+    }
+
+    // Step 2: Merge groups using gap analysis
+    // Find gaps between consecutive groups and merge if gap is small relative to the largest gap
+    if groups.len() >= 2 {
+        let mut merged = true;
+        while merged {
+            merged = false;
+            if groups.len() < 2 {
+                break;
+            }
+
+            // Find all gaps
+            let mut gaps: Vec<(usize, f64)> = (0..groups.len() - 1)
+                .map(|i| (i, group_medians[i + 1] - group_medians[i]))
+                .collect();
+            gaps.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+
+            // Find the largest gap
+            let max_gap = gaps.last().map(|g| g.1).unwrap_or(0.0);
+
+            // Merge the pair with the smallest gap if it's < 60% of the largest gap
+            if let Some(&(merge_idx, smallest_gap)) = gaps.first() {
+                if smallest_gap < max_gap * 0.6 && groups.len() > 2 {
+                    // Merge group merge_idx and merge_idx+1
+                    let right_members = groups[merge_idx + 1].1.clone();
+                    groups[merge_idx].1.extend(right_members);
+                    groups.remove(merge_idx + 1);
+
+                    // Recompute median for merged group
+                    let mut xs: Vec<f64> = groups[merge_idx].1.iter().map(|&i| overlays[i].x).collect();
+                    xs.sort_by(|a, b| a.partial_cmp(b).unwrap());
+                    groups[merge_idx].0 = xs[xs.len() / 2];
+                    group_medians.remove(merge_idx + 1);
+                    group_medians[merge_idx] = xs[xs.len() / 2];
+
+                    merged = true;
+                }
+            }
+        }
+    }
+
+    // Step 3: Filter to columns with 3+ members
+    let mut columns: Vec<Vec<usize>> = groups
+        .into_iter()
+        .map(|(_, members)| members)
+        .filter(|c| c.len() >= 3)
+        .collect();
+
+    if columns.is_empty() {
+        return;
+    }
+
+    // Sort columns by position
+    columns.sort_by(|a, b| {
+        overlays[a[0]].x.partial_cmp(&overlays[b[0]].x).unwrap()
+    });
+
+    // Step 4: Snap each column to its minimum x (now corrected by rescale_x_positions)
+    // and expand width to fill the gap to the next column.
+    let col_count = columns.len();
+    for ci in 0..col_count {
+        let min_x = columns[ci]
+            .iter()
+            .map(|&i| overlays[i].x)
+            .fold(f64::INFINITY, f64::min);
+
+        // Column right edge: next column's min_x minus gap, or slide edge
+        let gap = 0.15;
+        let max_right = if ci + 1 < col_count {
+            let next_min_x = columns[ci + 1]
+                .iter()
+                .map(|&i| overlays[i].x)
+                .fold(f64::INFINITY, f64::min);
+            next_min_x - gap
+        } else {
+            sw - 0.3
+        };
+
+        let col_width = (max_right - min_x).max(1.0);
+
+        eprintln!(
+            "  col-align [{ci}]: {} members, x={min_x:.2}\" w={col_width:.2}\"",
+            columns[ci].len(),
+        );
+
+        for &idx in &columns[ci] {
+            overlays[idx].x = min_x;
+            overlays[idx].w = col_width;
         }
     }
 }
