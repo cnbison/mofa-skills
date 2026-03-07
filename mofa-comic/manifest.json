@@ -1,0 +1,49 @@
+{
+  "name": "mofa-comic",
+  "version": "0.1.0",
+  "binaries": {
+    "darwin-aarch64": {
+      "url": "https://github.com/mofa-org/mofa-skills/releases/download/v0.1.0/mofa-darwin-aarch64.tar.gz",
+      "sha256": "7b11d62b5c44aa318fad5861b6810af09036e2e1c01a2681d0466a5804d16c7f"
+    },
+    "darwin-x86_64": {
+      "url": "https://github.com/mofa-org/mofa-skills/releases/download/v0.1.0/mofa-darwin-x86_64.tar.gz",
+      "sha256": "b54d9b26329c4da7d7bd374e0101f9edef90bd7cffd4f4d85947202da24b8215"
+    },
+    "linux-x86_64": {
+      "url": "https://github.com/mofa-org/mofa-skills/releases/download/v0.1.0/mofa-linux-x86_64.tar.gz",
+      "sha256": "2922c09a7650800c3884f30eb19b6ceb05f1b4e1168b2815c71bd7805530a631"
+    }
+  },
+  "tools": [
+    {
+      "name": "mofa_comic",
+      "description": "Generate multi-panel comic strips with AI-generated art.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "panels": {
+            "type": "array",
+            "description": "Array of panel objects",
+            "items": {
+              "type": "object",
+              "properties": {
+                "prompt": { "type": "string", "description": "Panel content description" },
+                "style": { "type": "string", "description": "Panel variant" }
+              },
+              "required": ["prompt"]
+            }
+          },
+          "style": { "type": "string", "description": "Style template name (default: xkcd)", "default": "xkcd" },
+          "out": { "type": "string", "description": "Output PNG file path" },
+          "work_dir": { "type": "string", "description": "Working directory for panel PNGs" },
+          "layout": { "type": "string", "description": "Layout: horizontal, vertical, grid", "default": "horizontal" },
+          "concurrency": { "type": "integer", "description": "Parallel generation limit (default: 3)" },
+          "gutter": { "type": "integer", "description": "Gap between panels in pixels (default: 20)" },
+          "refine": { "type": "boolean", "description": "Refine panels with Qwen-Edit" }
+        },
+        "required": ["panels", "out"]
+      }
+    }
+  ]
+}

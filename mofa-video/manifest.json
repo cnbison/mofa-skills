@@ -1,0 +1,48 @@
+{
+  "name": "mofa-video",
+  "version": "0.1.0",
+  "binaries": {
+    "darwin-aarch64": {
+      "url": "https://github.com/mofa-org/mofa-skills/releases/download/v0.1.0/mofa-darwin-aarch64.tar.gz",
+      "sha256": "7b11d62b5c44aa318fad5861b6810af09036e2e1c01a2681d0466a5804d16c7f"
+    },
+    "darwin-x86_64": {
+      "url": "https://github.com/mofa-org/mofa-skills/releases/download/v0.1.0/mofa-darwin-x86_64.tar.gz",
+      "sha256": "b54d9b26329c4da7d7bd374e0101f9edef90bd7cffd4f4d85947202da24b8215"
+    },
+    "linux-x86_64": {
+      "url": "https://github.com/mofa-org/mofa-skills/releases/download/v0.1.0/mofa-linux-x86_64.tar.gz",
+      "sha256": "2922c09a7650800c3884f30eb19b6ceb05f1b4e1168b2815c71bd7805530a631"
+    }
+  },
+  "tools": [
+    {
+      "name": "mofa_video",
+      "description": "Generate animated video cards with AI images and Veo animation.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "cards": {
+            "type": "array",
+            "description": "Array of video card objects",
+            "items": {
+              "type": "object",
+              "properties": {
+                "prompt": { "type": "string", "description": "Card content description" },
+                "style": { "type": "string", "description": "Card variant" }
+              },
+              "required": ["prompt"]
+            }
+          },
+          "style": { "type": "string", "description": "Image style name (default: video-card)", "default": "video-card" },
+          "anim_style": { "type": "string", "description": "Animation style name (default: shuimo)", "default": "shuimo" },
+          "card_dir": { "type": "string", "description": "Output directory for PNGs and MP4s" },
+          "bgm": { "type": "string", "description": "Background music file path" },
+          "aspect": { "type": "string", "description": "Aspect ratio (default: 9:16)", "default": "9:16" },
+          "concurrency": { "type": "integer", "description": "Parallel generation limit (default: 3)" }
+        },
+        "required": ["cards", "card_dir"]
+      }
+    }
+  ]
+}

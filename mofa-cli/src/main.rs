@@ -210,8 +210,255 @@ fn find_styles_dir(mofa_root: &std::path::Path, skill_name: &str) -> PathBuf {
     mofa_root.join("mofa").join("styles")
 }
 
+/// Plugin protocol mode: called as `./main <tool_name>` with JSON on stdin.
+/// Returns `{"output": "...", "success": true/false}` on stdout.
+fn run_plugin(tool_name: &str) -> Result<()> {
+    let mut input_json = String::new();
+    std::io::stdin().read_to_string(&mut input_json)?;
+    let args: serde_json::Value = serde_json::from_str(&input_json)
+        .unwrap_or_else(|_| serde_json::json!({}));
+
+    // Resolve mofa root relative to the binary location:
+    // binary is at <skills_dir>/<skill>/main, so parent.parent = skills_dir
+    // sibling dirs (mofa/, mofa-slides/styles/) are also under skills_dir
+    let mofa_root = if let Ok(exe) = std::env::current_exe() {
+        let skill_dir = exe.parent().unwrap_or(std::path::Path::new("."));
+        let skills_dir = skill_dir.parent().unwrap_or(skill_dir);
+        if skills_dir.join("mofa").join("config.json").exists() {
+            skills_dir.to_path_buf()
+        } else {
+            config::find_mofa_root()
+        }
+    } else {
+        config::find_mofa_root()
+    };
+    let cfg = config::MofaConfig::load_default(&mofa_root);
+
+    let result = match tool_name {
+        "mofa_slides" => plugin_slides(&args, &mofa_root, &cfg),
+        "mofa_cards" => plugin_cards(&args, &mofa_root, &cfg),
+        "mofa_comic" => plugin_comic(&args, &mofa_root, &cfg),
+        "mofa_infographic" => plugin_infographic(&args, &mofa_root, &cfg),
+        "mofa_video" => plugin_video(&args, &mofa_root, &cfg),
+        _ => Err(eyre::eyre!("unknown tool: {tool_name}")),
+    };
+
+    match result {
+        Ok(output) => {
+            println!("{}", serde_json::json!({"output": output, "success": true}));
+        }
+        Err(e) => {
+            println!("{}", serde_json::json!({"output": format!("{e:#}"), "success": false}));
+        }
+    }
+    Ok(())
+}
+
+fn plugin_slides(
+    args: &serde_json::Value,
+    mofa_root: &std::path::Path,
+    cfg: &config::MofaConfig,
+) -> Result<String> {
+    let style_name = args.get("style").and_then(|v| v.as_str()).unwrap_or("nb-pro");
+    let out_str = args.get("out").and_then(|v| v.as_str())
+        .ok_or_else(|| eyre::eyre!("missing 'out' (output PPTX path)"))?;
+    let out = PathBuf::from(out_str);
+    let slide_dir = args.get("slide_dir").and_then(|v| v.as_str())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            let dir = std::env::temp_dir().join(format!("mofa-slides-{}", std::process::id()));
+            std::fs::create_dir_all(&dir).ok();
+            dir
+        });
+    let concurrency = args.get("concurrency").and_then(|v| v.as_u64()).unwrap_or(5) as usize;
+    let image_size = args.get("image_size").and_then(|v| v.as_str());
+    let gen_model = args.get("gen_model").and_then(|v| v.as_str());
+    let ref_image_size = args.get("ref_image_size").and_then(|v| v.as_str());
+    let vision_model = args.get("vision_model").and_then(|v| v.as_str());
+    let auto_layout = args.get("auto_layout").and_then(|v| v.as_bool()).unwrap_or(false);
+    let refine = args.get("refine").and_then(|v| v.as_bool()).unwrap_or(false);
+
+    let slides_json = args.get("slides")
+        .ok_or_else(|| eyre::eyre!("missing 'slides' array"))?;
+    let mut slides: Vec<pipeline::slides::SlideInput> = serde_json::from_value(slides_json.clone())?;
+
+    if auto_layout {
+        for slide in &mut slides {
+            slide.auto_layout = true;
+        }
+    }
+
+    let styles_dir = find_styles_dir(mofa_root, "slides");
+    let style_file = styles_dir.join(format!("{style_name}.toml"));
+    let loaded_style = style::load_style(&style_file)?;
+
+    std::fs::create_dir_all(&slide_dir).ok();
+
+    pipeline::slides::run(
+        &slide_dir, &out, &slides, &loaded_style, cfg,
+        concurrency, image_size, gen_model, ref_image_size, vision_model, refine,
+    )?;
+
+    Ok(format!("Generated PPTX: {}", out.display()))
+}
+
+fn plugin_cards(
+    args: &serde_json::Value,
+    mofa_root: &std::path::Path,
+    cfg: &config::MofaConfig,
+) -> Result<String> {
+    let style_name = args.get("style").and_then(|v| v.as_str()).unwrap_or("cny-guochao");
+    let card_dir = args.get("card_dir").and_then(|v| v.as_str())
+        .map(PathBuf::from)
+        .ok_or_else(|| eyre::eyre!("missing 'card_dir'"))?;
+    let aspect = args.get("aspect").and_then(|v| v.as_str());
+    let concurrency = args.get("concurrency").and_then(|v| v.as_u64()).unwrap_or(5) as usize;
+    let image_size = args.get("image_size").and_then(|v| v.as_str());
+
+    let cards_json = args.get("cards")
+        .ok_or_else(|| eyre::eyre!("missing 'cards' array"))?;
+    let cards: Vec<pipeline::cards::CardInput> = serde_json::from_value(cards_json.clone())?;
+
+    let styles_dir = find_styles_dir(mofa_root, "cards");
+    let style_file = styles_dir.join(format!("{style_name}.toml"));
+    let loaded_style = style::load_style(&style_file)?;
+
+    std::fs::create_dir_all(&card_dir).ok();
+
+    pipeline::cards::run(
+        &card_dir, &cards, &loaded_style, cfg,
+        concurrency, aspect, image_size, None,
+    )?;
+
+    Ok(format!("Generated {} card(s) in {}", cards.len(), card_dir.display()))
+}
+
+fn plugin_comic(
+    args: &serde_json::Value,
+    mofa_root: &std::path::Path,
+    cfg: &config::MofaConfig,
+) -> Result<String> {
+    let style_name = args.get("style").and_then(|v| v.as_str()).unwrap_or("xkcd");
+    let out_str = args.get("out").and_then(|v| v.as_str())
+        .ok_or_else(|| eyre::eyre!("missing 'out' (output PNG path)"))?;
+    let out = PathBuf::from(out_str);
+    let work_dir = args.get("work_dir").and_then(|v| v.as_str())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| out.parent().unwrap_or(std::path::Path::new(".")).to_path_buf());
+    let layout = args.get("layout").and_then(|v| v.as_str()).unwrap_or("horizontal");
+    let concurrency = args.get("concurrency").and_then(|v| v.as_u64()).unwrap_or(3) as usize;
+    let image_size = args.get("image_size").and_then(|v| v.as_str());
+    let refine = args.get("refine").and_then(|v| v.as_bool()).unwrap_or(false);
+    let gutter = args.get("gutter").and_then(|v| v.as_u64()).unwrap_or(20) as u32;
+
+    let panels_json = args.get("panels")
+        .ok_or_else(|| eyre::eyre!("missing 'panels' array"))?;
+    let panels: Vec<pipeline::comic::PanelInput> = serde_json::from_value(panels_json.clone())?;
+
+    let styles_dir = find_styles_dir(mofa_root, "comic");
+    let style_file = styles_dir.join(format!("{style_name}.toml"));
+    let loaded_style = style::load_style(&style_file)?;
+
+    std::fs::create_dir_all(&work_dir).ok();
+
+    pipeline::comic::run(
+        &work_dir, &out, &panels, &loaded_style, cfg,
+        layout, concurrency, image_size, refine, gutter, None,
+    )?;
+
+    Ok(format!("Generated comic: {}", out.display()))
+}
+
+fn plugin_infographic(
+    args: &serde_json::Value,
+    mofa_root: &std::path::Path,
+    cfg: &config::MofaConfig,
+) -> Result<String> {
+    let style_name = args.get("style").and_then(|v| v.as_str()).unwrap_or("cyberpunk-neon");
+    let out_str = args.get("out").and_then(|v| v.as_str())
+        .ok_or_else(|| eyre::eyre!("missing 'out' (output PNG path)"))?;
+    let out = PathBuf::from(out_str);
+    let work_dir = args.get("work_dir").and_then(|v| v.as_str())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| out.parent().unwrap_or(std::path::Path::new(".")).to_path_buf());
+    let concurrency = args.get("concurrency").and_then(|v| v.as_u64()).unwrap_or(3) as usize;
+    let image_size = args.get("image_size").and_then(|v| v.as_str());
+    let aspect = args.get("aspect").and_then(|v| v.as_str());
+    let refine = args.get("refine").and_then(|v| v.as_bool()).unwrap_or(false);
+    let gutter = args.get("gutter").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+
+    let sections_json = args.get("sections")
+        .ok_or_else(|| eyre::eyre!("missing 'sections' array"))?;
+    let sections: Vec<pipeline::infographic::SectionInput> = serde_json::from_value(sections_json.clone())?;
+
+    let styles_dir = find_styles_dir(mofa_root, "infographic");
+    let style_file = styles_dir.join(format!("{style_name}.toml"));
+    let loaded_style = style::load_style(&style_file)?;
+
+    std::fs::create_dir_all(&work_dir).ok();
+
+    pipeline::infographic::run(
+        &work_dir, &out, &sections, &loaded_style, cfg,
+        concurrency, image_size, aspect, refine, gutter, None,
+    )?;
+
+    Ok(format!("Generated infographic: {}", out.display()))
+}
+
+fn plugin_video(
+    args: &serde_json::Value,
+    mofa_root: &std::path::Path,
+    cfg: &config::MofaConfig,
+) -> Result<String> {
+    let style_name = args.get("style").and_then(|v| v.as_str()).unwrap_or("video-card");
+    let anim_style_name = args.get("anim_style").and_then(|v| v.as_str()).unwrap_or("shuimo");
+    let card_dir = args.get("card_dir").and_then(|v| v.as_str())
+        .map(PathBuf::from)
+        .ok_or_else(|| eyre::eyre!("missing 'card_dir'"))?;
+    let bgm = args.get("bgm").and_then(|v| v.as_str()).map(std::path::Path::new);
+    let aspect = args.get("aspect").and_then(|v| v.as_str()).unwrap_or("9:16");
+    let image_size = args.get("image_size").and_then(|v| v.as_str());
+    let concurrency = args.get("concurrency").and_then(|v| v.as_u64()).unwrap_or(3) as usize;
+    let still_duration = args.get("still_duration").and_then(|v| v.as_f64()).unwrap_or(2.0);
+    let crossfade_dur = args.get("crossfade_dur").and_then(|v| v.as_f64()).unwrap_or(1.0);
+    let fade_out_dur = args.get("fade_out_dur").and_then(|v| v.as_f64()).unwrap_or(1.5);
+    let music_volume = args.get("music_volume").and_then(|v| v.as_f64()).unwrap_or(0.3);
+    let music_fade_in = args.get("music_fade_in").and_then(|v| v.as_f64()).unwrap_or(2.0);
+
+    let cards_json = args.get("cards")
+        .ok_or_else(|| eyre::eyre!("missing 'cards' array"))?;
+    let cards: Vec<pipeline::video::VideoCardInput> = serde_json::from_value(cards_json.clone())?;
+
+    let styles_dir = find_styles_dir(mofa_root, "video");
+    let img_style_file = styles_dir.join(format!("{style_name}.toml"));
+    let img_style = style::load_style(&img_style_file)?;
+    let anim_style_file = styles_dir.join(format!("{anim_style_name}.toml"));
+    let anim_style = if anim_style_file.exists() {
+        style::load_style(&anim_style_file)?
+    } else {
+        style::load_style(&img_style_file)?
+    };
+
+    std::fs::create_dir_all(&card_dir).ok();
+
+    pipeline::video::run(
+        &card_dir, &cards, &img_style, &anim_style, cfg,
+        concurrency, Some(aspect), image_size, bgm, still_duration,
+        crossfade_dur, fade_out_dur, music_volume, music_fade_in,
+    )?;
+
+    Ok(format!("Generated {} video card(s) in {}", cards.len(), card_dir.display()))
+}
+
 fn main() -> Result<()> {
     color_eyre::install()?;
+
+    // Plugin protocol: if argv[1] looks like a tool name (contains '_'), use plugin mode
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() >= 2 && args[1].starts_with("mofa_") {
+        return run_plugin(&args[1]);
+    }
+
     let cli = Cli::parse();
 
     let mofa_root = cli.root.unwrap_or_else(config::find_mofa_root);
