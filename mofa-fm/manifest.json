@@ -1,0 +1,87 @@
+{
+  "name": "mofa-fm",
+  "version": "1.0.0",
+  "author": "hagency",
+  "description": "Voice management and TTS with custom voice cloning via ominix-api",
+  "timeout_secs": 300,
+  "requires_network": true,
+  "dependencies": {
+    "ominix-api": {
+      "repo": "https://github.com/OminiX-MLX/OminiX-MLX",
+      "crate": "ominix-api",
+      "features": ["tts"],
+      "description": "Local inference server for Qwen3 TTS with voice cloning on Apple Silicon"
+    },
+    "models": {
+      "Qwen3-TTS-12Hz-1.7B-Base-8bit": "~/.OminiX/models/Qwen3-TTS-12Hz-1.7B-Base-8bit"
+    }
+  },
+  "tools": [
+    {
+      "name": "fm_tts",
+      "description": "Synthesize speech from text. Supports preset voices and custom saved voices. If a custom voice name is given, voice cloning is used automatically. After generating, use send_file to deliver the audio to the user.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "The text to synthesize into speech"
+          },
+          "voice": {
+            "type": "string",
+            "description": "Voice name: a preset ('vivian', 'serena', 'ryan', etc.) or a saved custom voice name. Default: 'vivian' or the user's default voice."
+          },
+          "output_path": {
+            "type": "string",
+            "description": "Path to save the WAV file. Default: /tmp/crew_fm_tts_<timestamp>.wav"
+          },
+          "language": {
+            "type": "string",
+            "description": "Speech language: 'chinese' (default), 'english', 'japanese', 'korean'"
+          }
+        },
+        "required": ["text"]
+      }
+    },
+    {
+      "name": "fm_voice_save",
+      "description": "Save an audio file as a named custom voice for future TTS use. The audio should be 3-10 seconds of clear speech from the target speaker. Once saved, use the name with fm_tts to synthesize speech in that voice.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Name for the voice (alphanumeric and underscores only, e.g. 'my_voice', 'boss')"
+          },
+          "audio_path": {
+            "type": "string",
+            "description": "Absolute path to the audio file to use as voice reference"
+          }
+        },
+        "required": ["name", "audio_path"]
+      }
+    },
+    {
+      "name": "fm_voice_list",
+      "description": "List all available voices: both preset voices and saved custom voices.",
+      "input_schema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "fm_voice_delete",
+      "description": "Delete a saved custom voice by name.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Name of the custom voice to delete"
+          }
+        },
+        "required": ["name"]
+      }
+    }
+  ]
+}

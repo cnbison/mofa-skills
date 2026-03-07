@@ -8,7 +8,7 @@ use crate::layout::{
     extract_text_layout, extract_text_layout_deepseek, extract_text_layout_ocr,
     refine_text_layout, NO_TEXT_INSTRUCTION, SH, SW,
 };
-use crate::pptx::{self, SlideData, TextOverlay};
+use crate::pptx::{self, ImageOverlay, SlideData, TextOverlay};
 use crate::style::Style;
 use eyre::Result;
 use serde::Deserialize;
@@ -30,6 +30,8 @@ pub struct SlideInput {
     /// This enables PDF-to-PPTX conversion: provide original page images, extract text,
     /// remove text, overlay editable text.
     pub source_image: Option<String>,
+    /// Images to overlay on the slide at specific positions (e.g. logos).
+    pub overlay_images: Option<Vec<ImageOverlay>>,
 }
 
 /// Full slides pipeline: generate images + build multi-slide PPTX.
@@ -377,7 +379,8 @@ pub fn run(
             } else {
                 slides[i].texts.clone().unwrap_or_default()
             };
-            SlideData { image_path, texts }
+            let images = slides[i].overlay_images.clone().unwrap_or_default();
+            SlideData { image_path, texts, images }
         })
         .collect();
 

@@ -1,0 +1,431 @@
+//! MoFA FM: Voice management and TTS with custom voice cloning.
+//!
+//! Protocol: `./main <tool_name>` with JSON on stdin, JSON on stdout.
+//! Requires OMINIX_API_URL and CREW_DATA_DIR environment variables.
+
+use std::collections::BTreeMap;
+use std::io::Read;
+use std::path::{Path, PathBuf};
+use std::time::Duration;
+
+use serde::{Deserialize, Serialize};
+use serde_json::json;
+
+// ── Preset speakers (cannot be overwritten) ──────────────────────────
+
+const PRESET_VOICES: &[&str] = &[
+    "vivian", "serena", "ryan", "aiden", "eric", "dylan", "uncle_fu", "ono_anna", "sohee",
+];
+
+// ── Input types ──────────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+struct TtsInput {
+    text: String,
+    #[serde(default)]
+    voice: Option<String>,
+    #[serde(default)]
+    output_path: Option<String>,
+    #[serde(default)]
+    language: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct VoiceSaveInput {
+    name: String,
+    audio_path: String,
+}
+
+#[derive(Deserialize)]
+struct VoiceDeleteInput {
+    name: String,
+}
+
+// ── Voice registry ───────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, Deserialize, Default)]
+struct VoiceRegistry {
+    #[serde(default)]
+    default_voice: Option<String>,
+    #[serde(default)]
+    voices: BTreeMap<String, VoiceEntry>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct VoiceEntry {
+    file: String,
+    #[serde(default)]
+    created: Option<String>,
+}
+
+fn voices_dir() -> PathBuf {
+    let data_dir = std::env::var("CREW_DATA_DIR")
+        .unwrap_or_else(|_| "/tmp/crew".to_string());
+    PathBuf::from(data_dir).join("voices")
+}
+
+fn registry_path() -> PathBuf {
+    voices_dir().parent().unwrap_or(Path::new("/tmp")).join("voices.json")
+}
+
+fn load_registry() -> VoiceRegistry {
+    let path = registry_path();
+    if let Ok(data) = std::fs::read_to_string(&path) {
+        serde_json::from_str(&data).unwrap_or_default()
+    } else {
+        VoiceRegistry::default()
+    }
+}
+
+fn save_registry(reg: &VoiceRegistry) {
+    let path = registry_path();
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).ok();
+    }
+    if let Ok(data) = serde_json::to_string_pretty(reg) {
+        std::fs::write(&path, data).ok();
+    }
+}
+
+/// Resolve a voice name: returns Some(wav_path) for custom voices, None for presets.
+fn resolve_custom_voice(name: &str) -> Option<PathBuf> {
+    let reg = load_registry();
+    if let Some(entry) = reg.voices.get(name) {
+        let path = voices_dir().join(&entry.file);
+        if path.exists() {
+            return Some(path);
+        }
+    }
+    None
+}
+
+fn is_preset(name: &str) -> bool {
+    PRESET_VOICES.contains(&name.to_lowercase().as_str())
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────
+
+fn api_base_url() -> String {
+    std::env::var("OMINIX_API_URL")
+        .unwrap_or_else(|_| "http://localhost:8080".to_string())
+        .trim_end_matches('/')
+        .to_string()
+}
+
+fn http_client() -> reqwest::blocking::Client {
+    reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(120))
+        .connect_timeout(Duration::from_secs(5))
+        .build()
+        .expect("failed to build HTTP client")
+}
+
+fn check_health(client: &reqwest::blocking::Client, base_url: &str) -> Result<(), String> {
+    match client
+        .get(format!("{base_url}/health"))
+        .timeout(Duration::from_secs(5))
+        .send()
+    {
+        Ok(resp) if resp.status().is_success() => Ok(()),
+        Ok(resp) => Err(format!(
+            "ominix-api returned HTTP {} — is it running on {base_url}?",
+            resp.status()
+        )),
+        Err(e) => Err(format!(
+            "Cannot reach ominix-api at {base_url}: {e}. \
+             Start it with: ominix-api --port 8080"
+        )),
+    }
+}
+
+fn fail(msg: &str) -> ! {
+    let out = json!({"output": msg, "success": false});
+    println!("{out}");
+    std::process::exit(1);
+}
+
+fn succeed(msg: &str) -> ! {
+    let out = json!({"output": msg, "success": true});
+    println!("{out}");
+    std::process::exit(0);
+}
+
+fn truncate(s: &str, max: usize) -> String {
+    if s.chars().count() <= max {
+        s.to_string()
+    } else {
+        let end: String = s.chars().take(max).collect();
+        format!("{end}...")
+    }
+}
+
+fn timestamp() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+
+fn now_iso() -> String {
+    // Simple ISO-ish timestamp without chrono dependency
+    let secs = timestamp();
+    format!("{secs}")
+}
+
+fn is_valid_name(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= 64
+        && name
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '_' || c == '-')
+}
+
+// ── fm_tts ───────────────────────────────────────────────────────────
+
+fn handle_tts(input_json: &str) {
+    let input: TtsInput = match serde_json::from_str(input_json) {
+        Ok(v) => v,
+        Err(e) => fail(&format!("Invalid input: {e}")),
+    };
+
+    if input.text.trim().is_empty() {
+        fail("'text' must not be empty");
+    }
+
+    let base_url = api_base_url();
+    let client = http_client();
+    if let Err(e) = check_health(&client, &base_url) {
+        fail(&e);
+    }
+
+    let output_path = input
+        .output_path
+        .unwrap_or_else(|| format!("/tmp/crew_fm_tts_{}.wav", timestamp()));
+
+    if let Some(parent) = Path::new(&output_path).parent() {
+        if !parent.exists() {
+            fail(&format!(
+                "Output directory does not exist: {}",
+                parent.display()
+            ));
+        }
+    }
+
+    let language = input.language.unwrap_or_else(|| "chinese".to_string());
+
+    // Resolve voice: check custom registry first, then fall back to preset
+    let voice_name = input.voice.unwrap_or_else(|| {
+        let reg = load_registry();
+        reg.default_voice.unwrap_or_else(|| "vivian".to_string())
+    });
+
+    let body = if let Some(ref_path) = resolve_custom_voice(&voice_name) {
+        // Custom voice → use reference_audio for x-vector cloning
+        json!({
+            "input": input.text,
+            "reference_audio": ref_path.to_string_lossy(),
+            "language": language
+        })
+    } else {
+        // Preset voice
+        json!({
+            "input": input.text,
+            "voice": voice_name,
+            "language": language
+        })
+    };
+
+    let resp = match client
+        .post(format!("{base_url}/v1/audio/speech"))
+        .json(&body)
+        .send()
+    {
+        Ok(r) => r,
+        Err(e) => fail(&format!("TTS request failed: {e}")),
+    };
+
+    let status = resp.status();
+    if !status.is_success() {
+        let resp_text = resp.text().unwrap_or_default();
+        fail(&format!(
+            "TTS error (HTTP {status}): {}",
+            truncate(&resp_text, 200)
+        ));
+    }
+
+    let wav_bytes = match resp.bytes() {
+        Ok(b) => b,
+        Err(e) => fail(&format!("Failed to read TTS response: {e}")),
+    };
+
+    if wav_bytes.len() < 44 {
+        fail("TTS returned invalid WAV data (too small)");
+    }
+
+    if let Err(e) = std::fs::write(&output_path, &wav_bytes) {
+        fail(&format!("Failed to write {output_path}: {e}"));
+    }
+
+    let duration_secs = wav_bytes.len().saturating_sub(44) as f64 / 48000.0;
+    let voice_label = if resolve_custom_voice(&voice_name).is_some() {
+        format!("{voice_name} (custom)")
+    } else {
+        voice_name
+    };
+
+    succeed(&format!(
+        "Generated audio: {output_path} ({duration_secs:.1}s, voice: {voice_label}). Use send_file to deliver it to the user."
+    ));
+}
+
+// ── fm_voice_save ────────────────────────────────────────────────────
+
+fn handle_voice_save(input_json: &str) {
+    let input: VoiceSaveInput = match serde_json::from_str(input_json) {
+        Ok(v) => v,
+        Err(e) => fail(&format!("Invalid input: {e}")),
+    };
+
+    let name = input.name.to_lowercase();
+
+    if !is_valid_name(&name) {
+        fail("Voice name must be 1-64 characters, alphanumeric/underscore/dash only");
+    }
+
+    if is_preset(&name) {
+        fail(&format!(
+            "Cannot use '{name}' — it's a preset voice name. Choose a different name."
+        ));
+    }
+
+    let src = Path::new(&input.audio_path);
+    if !src.exists() {
+        fail(&format!("Audio file not found: {}", input.audio_path));
+    }
+    if !src.is_file() {
+        fail(&format!("Not a file: {}", input.audio_path));
+    }
+    if let Ok(meta) = std::fs::metadata(src) {
+        if meta.len() == 0 {
+            fail("Audio file is empty (0 bytes)");
+        }
+        if meta.len() > 50_000_000 {
+            fail("Audio file too large (>50MB). Use a 3-10 second clip.");
+        }
+    }
+
+    // Create voices directory
+    let dir = voices_dir();
+    if let Err(e) = std::fs::create_dir_all(&dir) {
+        fail(&format!("Failed to create voices directory: {e}"));
+    }
+
+    // Copy audio file
+    let filename = format!("{name}.wav");
+    let dest = dir.join(&filename);
+    if let Err(e) = std::fs::copy(src, &dest) {
+        fail(&format!("Failed to copy audio file: {e}"));
+    }
+
+    // Update registry
+    let mut reg = load_registry();
+    reg.voices.insert(
+        name.clone(),
+        VoiceEntry {
+            file: filename,
+            created: Some(now_iso()),
+        },
+    );
+    save_registry(&reg);
+
+    succeed(&format!(
+        "Voice '{name}' saved successfully. Use it with fm_tts by setting voice to '{name}'."
+    ));
+}
+
+// ── fm_voice_list ────────────────────────────────────────────────────
+
+fn handle_voice_list(_input_json: &str) {
+    let reg = load_registry();
+
+    let mut output = String::from("**Preset voices:**\n");
+    for v in PRESET_VOICES {
+        output.push_str(&format!("  - {v}\n"));
+    }
+
+    if reg.voices.is_empty() {
+        output.push_str("\n**Custom voices:** (none saved)\n");
+    } else {
+        output.push_str(&format!("\n**Custom voices ({}):**\n", reg.voices.len()));
+        for (name, entry) in &reg.voices {
+            let path = voices_dir().join(&entry.file);
+            let exists = if path.exists() { "" } else { " [file missing]" };
+            output.push_str(&format!("  - {name}{exists}\n"));
+        }
+    }
+
+    if let Some(ref default) = reg.default_voice {
+        output.push_str(&format!("\n**Default voice:** {default}"));
+    }
+
+    succeed(&output);
+}
+
+// ── fm_voice_delete ──────────────────────────────────────────────────
+
+fn handle_voice_delete(input_json: &str) {
+    let input: VoiceDeleteInput = match serde_json::from_str(input_json) {
+        Ok(v) => v,
+        Err(e) => fail(&format!("Invalid input: {e}")),
+    };
+
+    let name = input.name.to_lowercase();
+
+    if is_preset(&name) {
+        fail(&format!("Cannot delete preset voice '{name}'"));
+    }
+
+    let mut reg = load_registry();
+
+    if let Some(entry) = reg.voices.remove(&name) {
+        // Delete the audio file
+        let path = voices_dir().join(&entry.file);
+        if path.exists() {
+            std::fs::remove_file(&path).ok();
+        }
+
+        // Clear default if it was this voice
+        if reg.default_voice.as_deref() == Some(&name) {
+            reg.default_voice = None;
+        }
+
+        save_registry(&reg);
+        succeed(&format!("Voice '{name}' deleted."));
+    } else {
+        fail(&format!(
+            "Custom voice '{name}' not found. Use fm_voice_list to see available voices."
+        ));
+    }
+}
+
+// ── Main ─────────────────────────────────────────────────────────────
+
+fn main() {
+    let args: Vec<String> = std::env::args().collect();
+    let tool_name = args.get(1).map(|s| s.as_str()).unwrap_or("unknown");
+
+    let mut buf = String::new();
+    if let Err(e) = std::io::stdin().read_to_string(&mut buf) {
+        fail(&format!("Failed to read stdin: {e}"));
+    }
+
+    match tool_name {
+        "fm_tts" => handle_tts(&buf),
+        "fm_voice_save" => handle_voice_save(&buf),
+        "fm_voice_list" => handle_voice_list(&buf),
+        "fm_voice_delete" => handle_voice_delete(&buf),
+        _ => fail(&format!(
+            "Unknown tool '{tool_name}'. Expected: fm_tts, fm_voice_save, fm_voice_list, fm_voice_delete"
+        )),
+    }
+}

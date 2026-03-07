@@ -158,10 +158,28 @@ fn build_text_shape_xml(overlay: &TextOverlay, shape_id: u32) -> String {
     )
 }
 
+/// An image to overlay on a slide at a specific position.
+#[derive(Deserialize, Debug, Clone)]
+pub struct ImageOverlay {
+    pub path: String,
+    #[serde(default)]
+    pub x: f64,
+    #[serde(default)]
+    pub y: f64,
+    #[serde(default = "default_overlay_w")]
+    pub w: f64,
+    #[serde(default = "default_overlay_h")]
+    pub h: f64,
+}
+
+fn default_overlay_w() -> f64 { 2.0 }
+fn default_overlay_h() -> f64 { 1.5 }
+
 /// Data for a single slide in a multi-slide PPTX.
 pub struct SlideData {
     pub image_path: Option<String>,
     pub texts: Vec<TextOverlay>,
+    pub images: Vec<ImageOverlay>,
 }
 
 /// Build a multi-slide PPTX from slide data.
@@ -185,6 +203,7 @@ pub fn build_pptx(slides: &[SlideData], out_file: &Path, slide_w: f64, slide_h: 
         let mut shapes_xml = String::new();
         let mut has_image = false;
         let mut media_name = String::new();
+        let mut slide_media: Vec<(String, Vec<u8>, &str)> = Vec::new(); // per-slide media
 
         if let Some(img_path_str) = &sd.image_path {
             let img_path = Path::new(img_path_str);
@@ -200,8 +219,29 @@ pub fn build_pptx(slides: &[SlideData], out_file: &Path, slide_w: f64, slide_h: 
                     _ => (format!("image{slide_num}.png"), "image/png"),
                 };
                 media_name = mname.clone();
-                media_entries.push((mname, img_data, ctype));
+                slide_media.push((mname, img_data, ctype));
                 has_image = true;
+            }
+        }
+
+        // Load overlay images
+        let mut overlay_rids: Vec<String> = Vec::new();
+        for (oi, overlay_img) in sd.images.iter().enumerate() {
+            let img_path = Path::new(&overlay_img.path);
+            if img_path.exists() {
+                let img_data = std::fs::read(img_path)?;
+                let ext = img_path
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .unwrap_or("png")
+                    .to_lowercase();
+                let (mname, ctype) = match ext.as_str() {
+                    "jpg" | "jpeg" => (format!("overlay{slide_num}_{oi}.jpeg"), "image/jpeg"),
+                    _ => (format!("overlay{slide_num}_{oi}.png"), "image/png"),
+                };
+                let rid = format!("rId{}", 3 + oi);
+                overlay_rids.push(rid);
+                slide_media.push((mname, img_data, ctype));
             }
         }
 
@@ -214,9 +254,25 @@ pub fn build_pptx(slides: &[SlideData], out_file: &Path, slide_w: f64, slide_h: 
             String::new()
         };
 
+        // Overlay image shapes
+        for (oi, overlay_img) in sd.images.iter().enumerate() {
+            if oi < overlay_rids.len() {
+                let rid = &overlay_rids[oi];
+                let ox = inches_to_emu(overlay_img.x);
+                let oy = inches_to_emu(overlay_img.y);
+                let ow = inches_to_emu(overlay_img.w);
+                let oh = inches_to_emu(overlay_img.h);
+                let shape_id = (oi as u32) + 100;
+                shapes_xml.push_str(&format!(
+                    r#"<p:pic><p:nvPicPr><p:cNvPr id="{shape_id}" name="Overlay {oi}"/><p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr><p:nvPr/></p:nvPicPr><p:blipFill><a:blip r:embed="{rid}"/><a:stretch><a:fillRect/></a:stretch></p:blipFill><p:spPr><a:xfrm><a:off x="{ox}" y="{oy}"/><a:ext cx="{ow}" cy="{oh}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>"#
+                ));
+            }
+        }
+
         // Text overlay shapes
+        let text_shape_base = (sd.images.len() as u32) + 3;
         for (i, overlay) in sd.texts.iter().enumerate() {
-            shapes_xml.push_str(&build_text_shape_xml(overlay, (i as u32) + 3));
+            shapes_xml.push_str(&build_text_shape_xml(overlay, (i as u32) + text_shape_base));
         }
 
         let slide_xml = format!(
@@ -245,8 +301,20 @@ pub fn build_pptx(slides: &[SlideData], out_file: &Path, slide_w: f64, slide_h: 
 <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/{media_name}"/>"#
             ));
         }
+        // Overlay image relationships
+        for (oi, rid) in overlay_rids.iter().enumerate() {
+            let overlay_media_idx = if has_image { oi + 1 } else { oi };
+            let overlay_media_name = &slide_media[overlay_media_idx].0;
+            rels.push_str(&format!(
+                r#"
+<Relationship Id="{rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/{overlay_media_name}"/>"#
+            ));
+        }
         rels.push_str("\n</Relationships>");
         slide_rel_xmls.push(rels);
+
+        // Add all slide media to global list
+        media_entries.extend(slide_media);
     }
 
     // Build presentation.xml with slide list

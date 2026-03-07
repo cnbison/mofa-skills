@@ -3,16 +3,16 @@
   "version": "0.1.0",
   "binaries": {
     "darwin-aarch64": {
-      "url": "https://github.com/mofa-org/mofa-skills/releases/download/v0.1.0/mofa-darwin-aarch64.tar.gz",
-      "sha256": "7b11d62b5c44aa318fad5861b6810af09036e2e1c01a2681d0466a5804d16c7f"
+      "url": "https://github.com/mofa-org/mofa-skills/releases/download/v0.2.0/mofa-darwin-aarch64.tar.gz",
+      "sha256": "c02525ab00c4b81c95b87afb9a2018c81ced5af8eab9b25840a0f351a5e452e5"
     },
     "darwin-x86_64": {
-      "url": "https://github.com/mofa-org/mofa-skills/releases/download/v0.1.0/mofa-darwin-x86_64.tar.gz",
-      "sha256": "b54d9b26329c4da7d7bd374e0101f9edef90bd7cffd4f4d85947202da24b8215"
+      "url": "https://github.com/mofa-org/mofa-skills/releases/download/v0.2.0/mofa-darwin-x86_64.tar.gz",
+      "sha256": "18cbcc13722440f174943a629ebe67ed6e6aa529848984637aeeca8821d1155a"
     },
     "linux-x86_64": {
-      "url": "https://github.com/mofa-org/mofa-skills/releases/download/v0.1.0/mofa-linux-x86_64.tar.gz",
-      "sha256": "2922c09a7650800c3884f30eb19b6ceb05f1b4e1168b2815c71bd7805530a631"
+      "url": "https://github.com/mofa-org/mofa-skills/releases/download/v0.2.0/mofa-linux-x86_64.tar.gz",
+      "sha256": "458c1da00cda7313b19abab9b80038e0b1423fa28e3ab241e2a07acc70d14048"
     }
   },
   "tools": [
