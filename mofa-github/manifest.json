@@ -1,0 +1,27 @@
+{
+  "name": "mofa-github",
+  "version": "0.1.0",
+  "description": "GitHub integration via gh CLI — issues, PRs, CI, releases, and API queries",
+  "timeout_secs": 60,
+  "requires_network": true,
+  "tools": [
+    {
+      "name": "github_cli",
+      "description": "Execute a gh CLI command to interact with GitHub. Supports issues, PRs, CI runs, releases, and raw API queries. The command should NOT include the 'gh' prefix — just the subcommand (e.g., 'pr list --repo owner/repo').",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "command": {
+            "type": "string",
+            "description": "The gh subcommand to execute (without 'gh' prefix). Examples: 'pr list --repo owner/repo', 'issue create --title \"Bug\" --body \"...\"', 'api repos/owner/repo/pulls/55'"
+          },
+          "repo": {
+            "type": "string",
+            "description": "Repository in owner/repo format. If provided, appended as --repo flag (unless command already contains --repo)."
+          }
+        },
+        "required": ["command"]
+      }
+    }
+  ]
+}

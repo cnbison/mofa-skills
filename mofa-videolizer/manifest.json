@@ -1,0 +1,36 @@
+{
+  "name": "mofa-videolizer",
+  "version": "0.1.0",
+  "description": "Generate SRT subtitles from text + audio using Whisper or basic timing",
+  "timeout_secs": 120,
+  "requires_network": false,
+  "tools": [
+    {
+      "name": "videolizer_subtitles",
+      "description": "Generate an SRT subtitle file from a script text file and an audio file. Uses Whisper for word-level timestamps when available, falls back to basic even-spread timing.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "text_path": {
+            "type": "string",
+            "description": "Path to the script text file"
+          },
+          "audio_path": {
+            "type": "string",
+            "description": "Path to the audio file (WAV, MP3, etc.)"
+          },
+          "output_path": {
+            "type": "string",
+            "description": "Path to save the generated .srt file"
+          },
+          "mode": {
+            "type": "string",
+            "description": "Subtitle generation mode: 'auto' (default), 'whisper', or 'basic'",
+            "default": "auto"
+          }
+        },
+        "required": ["text_path", "audio_path", "output_path"]
+      }
+    }
+  ]
+}

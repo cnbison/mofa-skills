@@ -1,0 +1,50 @@
+// SPDX-License-Identifier: Apache-2.0
+
+// Multi-Agent Team Build Pipeline
+// Architect plans, Developer implements, Reviewer checks, Tester validates.
+//
+// Flow:
+//   architect ──→ developer ──→ reviewer ──→ tester
+//                                  │
+//                            (revision loop, max 2)
+
+digraph team_build {
+    graph [label="Multi-Agent Team Build", default_model="strong"]
+
+    architect [
+        prompt="You are a software architect. Given the user's task, produce a clear implementation plan.\n\nYour output MUST include:\n1. **Goal**: One-sentence summary of what needs to be built\n2. **Files**: List of files to create or modify, with purpose of each\n3. **Interfaces**: Key functions/classes and their signatures\n4. **Data flow**: How data moves through the system\n5. **Constraints**: Edge cases, error handling requirements, performance considerations\n6. **Acceptance criteria**: How to verify the implementation is correct\n\nBe specific and actionable. The developer will implement exactly what you specify.",
+        label="Architect",
+        model="strong",
+        tools="read_file,write_file",
+        timeout_secs="300"
+    ]
+
+    developer [
+        prompt="You are a senior developer. You have received an implementation plan from the architect.\n\nYour task:\n1. Implement the plan exactly as specified\n2. Write clean, readable code with minimal comments (only non-obvious logic)\n3. Handle edge cases mentioned in the plan\n4. Use write_file to save all code artifacts\n5. Write a brief implementation summary noting any deviations from the plan and why\n\nDo NOT skip steps or simplify the plan. Implement everything.",
+        label="Developer",
+        model="strong",
+        tools="read_file,write_file,exec",
+        timeout_secs="600"
+    ]
+
+    reviewer [
+        prompt="You are a code reviewer. You have received code from the developer and the original architecture plan.\n\nReview for:\n1. **Correctness**: Does the code implement the plan? Any logic bugs?\n2. **Edge cases**: Are all constraints from the plan handled?\n3. **Code quality**: Readability, naming, structure\n4. **Missing pieces**: Anything in the plan that wasn't implemented?\n\nOutput ONE of:\n- **APPROVED**: Code is ready for testing. List what's good and any minor notes.\n- **REVISION NEEDED**: List specific issues that must be fixed. Be precise — file, line, what's wrong, what to do instead.",
+        label="Reviewer",
+        model="strong",
+        tools="read_file",
+        timeout_secs="300"
+    ]
+
+    tester [
+        prompt="You are a QA engineer. You have received approved code and the original requirements.\n\nYour task:\n1. Design test cases covering: happy path, edge cases, error handling\n2. Write and run the tests using exec\n3. Report results: which tests passed, which failed, and why\n4. Save the test file using write_file\n\nIf tests fail, include the exact error output so the team can diagnose.",
+        label="Tester",
+        model="cheap",
+        tools="read_file,write_file,exec",
+        goal_gate="true",
+        timeout_secs="300"
+    ]
+
+    architect -> developer
+    developer -> reviewer
+    reviewer -> tester
+}

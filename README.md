@@ -12,6 +12,10 @@ AI-powered content generation platform that turns text into visual media — pre
 | **mofa-infographic** | `.png` | 4 | Multi-section infographics stitched vertically |
 | **mofa-video** | `.mp4` | 4 | Animated video cards with background music via Gemini Veo |
 | **mofa-research** | text | — | 3-agent deep research pipeline (search → analyze → synthesize) |
+| **mofa-videolizer** | `.srt` | — | Subtitle generation from text + audio (Whisper / basic fallback) |
+| **mofa-workflow** | artifacts | — | Multi-agent team pipeline (architect → developer → reviewer → tester) |
+| **mofa-news** | `.md` | 8 categories | News digest from Google News, Hacker News, Yahoo, Substack, Medium |
+| **mofa-github** | text | — | GitHub integration via `gh` CLI (issues, PRs, CI, releases, API) |
 
 ## Architecture
 
@@ -30,6 +34,10 @@ mofa-skills/
 ├── mofa-infographic/     # 4 infographic styles
 ├── mofa-video/           # Video animation styles
 ├── mofa-research/        # DOT-based research pipeline
+├── mofa-videolizer/      # Subtitle generation (Whisper / basic)
+├── mofa-workflow/        # DOT-based multi-agent team pipeline
+├── mofa-news/            # News digest aggregator
+├── mofa-github/          # GitHub integration via gh CLI
 │
 └── mofa-cli/             # Pure Rust CLI (single binary, no Node.js)
     └── src/

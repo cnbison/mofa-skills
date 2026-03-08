@@ -1,0 +1,40 @@
+{
+  "name": "mofa-news",
+  "version": "0.1.0",
+  "description": "News digest aggregator — headlines from Google News, Hacker News, Yahoo, Substack, Medium with LLM synthesis",
+  "timeout_secs": 300,
+  "requires_network": true,
+  "tools": [
+    {
+      "name": "news_digest",
+      "description": "Fetch and synthesize a news digest. Discovers headlines from RSS/API sources, deep-fetches top articles, and produces a structured briefing.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "categories": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["politics", "world", "business", "technology", "science", "entertainment", "health", "sports"]
+            },
+            "description": "News categories to include. Default: ['technology', 'world']"
+          },
+          "max_articles_per_category": {
+            "type": "integer",
+            "description": "Maximum articles to deep-fetch per category. Default: 3",
+            "default": 3
+          },
+          "language": {
+            "type": "string",
+            "description": "Output language: 'en' or 'zh'. Default: 'en'",
+            "default": "en"
+          },
+          "output_path": {
+            "type": "string",
+            "description": "Path to save the digest markdown file. If omitted, returns digest as tool output."
+          }
+        }
+      }
+    }
+  ]
+}
