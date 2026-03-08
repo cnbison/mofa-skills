@@ -1,49 +1,5 @@
 {
   "name": "mofa-video",
   "version": "0.1.0",
-  "binaries": {
-    "darwin-aarch64": {
-      "url": "https://github.com/mofa-org/mofa-skills/releases/download/v0.2.0/mofa-darwin-aarch64.tar.gz",
-      "sha256": "c02525ab00c4b81c95b87afb9a2018c81ced5af8eab9b25840a0f351a5e452e5"
-    },
-    "darwin-x86_64": {
-      "url": "https://github.com/mofa-org/mofa-skills/releases/download/v0.2.0/mofa-darwin-x86_64.tar.gz",
-      "sha256": "18cbcc13722440f174943a629ebe67ed6e6aa529848984637aeeca8821d1155a"
-    },
-    "linux-x86_64": {
-      "url": "https://github.com/mofa-org/mofa-skills/releases/download/v0.2.0/mofa-linux-x86_64.tar.gz",
-      "sha256": "458c1da00cda7313b19abab9b80038e0b1423fa28e3ab241e2a07acc70d14048"
-    }
-  },
-  "tools": [
-    {
-      "name": "mofa_video",
-      "description": "Generate animated video cards with AI images and Veo animation.",
-      "input_schema": {
-        "type": "object",
-        "properties": {
-          "cards": {
-            "type": "array",
-            "description": "Array of video card objects",
-            "items": {
-              "type": "object",
-              "properties": {
-                "prompt": { "type": "string", "description": "Card content description" },
-                "style": { "type": "string", "description": "Card variant" }
-              },
-              "required": ["prompt"]
-            }
-          },
-          "style": { "type": "string", "description": "Image style name (default: video-card)", "default": "video-card" },
-          "anim_style": { "type": "string", "description": "Animation style name (default: shuimo)", "default": "shuimo" },
-          "card_dir": { "type": "string", "description": "Output directory for PNGs and MP4s" },
-          "bgm": { "type": "string", "description": "Background music file path" },
-          "aspect": { "type": "string", "description": "Aspect ratio (default: 9:16)", "default": "9:16" },
-          "concurrency": { "type": "integer", "description": "Parallel generation limit (default: 3)" },
-          "api": { "type": "string", "description": "API mode: rt (realtime, fast) or batch (50% cheaper, async)", "default": "rt", "enum": ["rt", "batch"] }
-        },
-        "required": ["cards", "card_dir"]
-      }
-    }
-  ]
+  "tools": []
 }
