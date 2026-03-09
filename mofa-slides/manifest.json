@@ -1,6 +1,7 @@
 {
   "name": "mofa-slides",
   "version": "0.1.0",
+  "timeout_secs": 600,
   "binaries": {
     "darwin-aarch64": {
       "url": "https://github.com/mofa-org/mofa-skills/releases/download/v0.2.0/mofa-darwin-aarch64.tar.gz",
