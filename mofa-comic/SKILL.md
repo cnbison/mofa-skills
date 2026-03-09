@@ -163,6 +163,26 @@ mofa comic --style graphic-novel --api batch --layout grid --gutter 20 --out /tm
 | `-i` / `--input` | stdin | Input JSON file path |
 | `--root` | auto-detected | Path to mofa root directory |
 
+## Timing & Timeouts
+
+Each panel takes ~15-30 seconds to generate. Total time depends on panel count and concurrency:
+
+| Panels | Concurrency | Estimated Time |
+|--------|-------------|----------------|
+| 3-4 | 3 | ~30-60s |
+| 6 | 3 | ~1-2 min |
+| 9 | 5 | ~2-3 min |
+| 12 | 5 | ~3-5 min |
+
+**Tool timeout is 600 seconds (10 min).** To avoid timeouts:
+
+- **Reduce panels**: 6 panels is safer than 9 or 12
+- **Increase concurrency**: `"concurrency": 5` generates faster (default: 3)
+- **Use smaller images**: Omit `image_size` or use `"1K"` (default) instead of `"2K"`/`"4K"`
+- **Don't use `--api batch`**: Batch API can take 5-30 min, likely exceeding timeout
+
+If a generation times out, **cached panels are preserved** — rerun and only missing panels will be regenerated.
+
 ## Resolution & Quality
 
 | Flag | Values | Description |

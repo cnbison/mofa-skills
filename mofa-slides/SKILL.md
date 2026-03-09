@@ -90,6 +90,27 @@ Set per-slide variant via JSON `"style"` field (e.g. `"style": "cover"`). Defaul
 
 Use `--api batch` for large decks (15+ slides) where cost matters more than speed.
 
+## Timing & Timeouts
+
+Each slide takes ~15-30 seconds to generate. Total time depends on slide count and concurrency:
+
+| Slides | Concurrency | Estimated Time |
+|--------|-------------|----------------|
+| 5 | 5 | ~30-60s |
+| 10 | 5 | ~1-2 min |
+| 15 | 5 | ~2-3 min |
+| 25 | 5 | ~4-6 min |
+
+**Tool timeout is 600 seconds (10 min).** To avoid timeouts:
+
+- **Keep slide count under 15** for a single call
+- **Increase concurrency**: `"concurrency": 5` or higher (default: 5)
+- **Use smaller images**: `"1K"` or `"2K"` instead of `"4K"`
+- **Don't use `--api batch`** in crew.rs tool calls — batch can take 5-30 min
+- **Avoid `--auto-layout`** unless needed — it adds VQA + Qwen-Edit passes per slide
+
+If a generation times out, **cached slides are preserved** — rerun and only missing slides will be regenerated.
+
 ## Resolution & Quality
 
 | Flag | Values | Description |

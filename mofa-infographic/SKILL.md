@@ -73,6 +73,25 @@ Variant is auto-detected by position. Override with the `variant` field in JSON.
 
 Use `--api batch` for large infographics (8+ sections) where cost matters more than speed.
 
+## Timing & Timeouts
+
+Each section takes ~15-30 seconds to generate. Total time depends on section count and concurrency:
+
+| Sections | Concurrency | Estimated Time |
+|----------|-------------|----------------|
+| 3 | 3 | ~30-60s |
+| 5 | 3 | ~1-2 min |
+| 8 | 5 | ~2-3 min |
+
+**Tool timeout is 600 seconds (10 min).** To avoid timeouts:
+
+- **Keep sections under 8** for a single call
+- **Increase concurrency**: `"concurrency": 5` (default: 3)
+- **Use smaller images**: Omit `image_size` or use `"1K"` instead of `"2K"`/`"4K"`
+- **Don't use `--api batch`** in crew.rs tool calls — batch can take 5-30 min
+
+If a generation times out, **cached sections are preserved** — rerun and only missing sections will be regenerated.
+
 ## How It Works
 
 1. **Generate sections** — Each section is generated as a separate 16:9 image

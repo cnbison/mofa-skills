@@ -82,6 +82,20 @@ Each card: `{ name, prompt, style? }`. Style is the variant within the TOML file
 | `--api` | `rt` | API mode: `rt` (realtime, fast parallel) or `batch` (50% cheaper, async 5-30 min) |
 | `-i` / `--input` | stdin | Input JSON file |
 
+## Timing & Timeouts
+
+Each card takes ~15-30 seconds to generate. Total time depends on card count and concurrency:
+
+| Cards | Concurrency | Estimated Time |
+|-------|-------------|----------------|
+| 1-3 | 5 | ~15-30s |
+| 5 | 5 | ~30-60s |
+| 10 | 5 | ~2-3 min |
+
+**Tool timeout is 600 seconds (10 min).** Cards are fast — timeouts are unlikely unless generating many cards at high resolution.
+
+If a generation times out, **cached cards are preserved** — rerun and only missing cards will be regenerated.
+
 ## Config
 
 `mofa/config.json`:
