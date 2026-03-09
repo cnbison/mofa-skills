@@ -51,7 +51,8 @@ pub fn run(
     );
     let model = gen_model.unwrap_or(cfg.gen_model());
 
-    eprintln!("Generating {total} cards ({}{ar})...", if batch { "batch, " } else { &format!("{concurrency} parallel, ") });
+    let mode_str = if batch { "batch, ".to_string() } else { format!("{concurrency} parallel, ") };
+    eprintln!("Generating {total} cards ({mode_str}{ar})...");
 
     let result = if batch {
         let requests: Vec<BatchImageRequest> = cards
