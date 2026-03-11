@@ -235,26 +235,81 @@ wait
 }
 ```
 
-## Phase 3: Merge (KnowledgeBase Construction)
+## Phase 2.5: Worker Failure Handling (容错机制)
 
-Combine all worker outputs:
+**CRITICAL: Always handle worker failures gracefully**
+
+After workers complete (success or failure):
+
+### Failure Recovery
+
+```bash
+# Check which workers completed
+completed_workers = []
+failed_workers = []
+
+for worker in spawned_workers:
+    if worker.status == "completed":
+        completed_workers.append(worker)
+    elif worker.status == "failed" or worker.status == "timeout":
+        failed_workers.append(worker)
+        # Capture partial results if available
+        if worker.partial_output:
+            completed_workers.append(worker)
+
+# Log failure summary
+write_file "./research/{query-slug}/kb/execution_log.md" "Execution Summary:
+- Total angles: {total}
+- Successful: {len(completed_workers)}
+- Failed: {len(failed_workers)}
+- Failed angles: {failed_angles_list}"
+```
+
+### Minimum Viable Research
+
+**Even if only 1 worker succeeds, continue to Merge phase.**
+
+Requirements adjusted based on success rate:
+
+| Success Rate | Min Angles | Min Sources | Min Facts | Report Length |
+|-------------|-----------|-------------|-----------|---------------|
+| 100% (4/4)  | 4         | 15          | 25        | 8000 chars    |
+| 75% (3/4)   | 3         | 12          | 20        | 6000 chars    |
+| 50% (2/4)   | 2         | 8           | 15        | 5000 chars    |
+| 25% (1/4)   | 1         | 5           | 10        | 3000 chars    |
+
+**Always generate report with caveats:**
+> "Note: Based on {N} of {total} planned research angles due to timeouts. Coverage may be incomplete."
+
+## Phase 3: Merge (KnowledgeBase Construction - ALWAYS EXECUTE)
+
+**MANDATORY: This phase ALWAYS runs, regardless of worker failures.**
+
+Combine all worker outputs (complete and partial):
 
 ```markdown
 # Merged Research Outputs
 Query: {original_query}
 Generated: {timestamp}
-
-## Angle 1: {label}
-Query: {task}
-
-{Worker 1 output}
+Execution Summary:
+- Total angles planned: {N}
+- Successfully completed: {M}
+- Failed/timeout: {N-M}
+- Angles included in this merge: {list}
 
 ---
 
-## Angle 2: {label}
+## Angle 1: {label} [STATUS: completed|partial|failed]
 Query: {task}
 
-{Worker 2 output}
+{Worker 1 output OR failure reason}
+
+---
+
+## Angle 2: {label} [STATUS: completed|partial|failed]
+Query: {task}
+
+{Worker 2 output OR failure reason}
 
 ---
 
@@ -265,6 +320,11 @@ Query: {task}
 | Fact | Sources | Confidence |
 |------|---------|------------|
 | ...  | ...     | ...        |
+
+## Coverage Gaps (from failed angles)
+
+- {Angle X}: Failed due to timeout - potential gap in {topic}
+- {Angle Y}: Failed due to timeout - potential gap in {topic}
 ```
 
 Save to: `./research/{query-slug}/kb/merged_outputs.md`
@@ -284,20 +344,62 @@ Save to: `./research/{query-slug}/kb/merged_outputs.md`
 
 Save to: `./research/{query-slug}/kb/analysis.md`
 
-## Phase 5: Synthesize (Report Generation)
+## Phase 5: Synthesize (Report Generation) - ALWAYS EXECUTE
 
 **Model:** Strong
 
 **Goal Gate:** MUST write file before completion.
+
+**IMPORTANT: This phase ALWAYS runs, even if all workers failed. Generate report based on available data.**
+
+**Adaptive Requirements (based on worker success rate):**
+
+| Success Rate | Min Findings | Min Sources | Min Report Length |
+|-------------|--------------|-------------|-------------------|
+| 100% (4/4)  | 5-8          | 15          | 8000 chars        |
+| 75% (3/4)   | 4-6          | 10          | 6000 chars        |
+| 50% (2/4)   | 3-5          | 8           | 4000 chars        |
+| 25% (1/4)   | 2-4          | 5           | 2500 chars        |
+| 0% (0/4)    | 1-2          | 0           | 1000 chars (note) |
 
 **Synthesis Prompt:**
 
 ```json
 {
   "role": "user",
-  "content": "You are a research synthesis expert. Produce a comprehensive report.\n\n[Read from: ./research/{query-slug}/kb/analysis.md]\n\nReport Requirements:\n\n1. EXECUTIVE SUMMARY (5-8 sentences)\n   - Key finding\n   - Methodology summary\n   - Overall confidence\n\n2. KEY FINDINGS (minimum 5, preferably 8)\n   Each finding MUST include:\n   - Clear title\n   - Detailed explanation (not just headline)\n   - Specific numbers/dates/quotes\n   - Citations [n]\n   - Confidence level\n\n3. DETAILED ANALYSIS\n   - Organized by subtopic\n   - Comprehensive coverage\n   - Cross-cutting themes\n\n4. CONTRADICTIONS & UNCERTAINTIES\n   - Table format\n   - Source of disagreement\n   - Assessment\n\n5. SOURCES\n   - Full bibliography\n   - [n] Title - URL (Type, Date, Authority)\n\nCRITICAL RULES:\n- Minimum 8000 characters\n- Every major claim has citation\n- NO EMOJI - plain text only\n- Match query language\n- Include specific data, not generalizations\n\nFINAL STEP: Use write_file to save to ./research/{query-slug}/report.md"
+  "content": "You are a research synthesis expert. Produce a comprehensive report.\n\n[Read from: ./research/{query-slug}/kb/analysis.md]\n\nFirst, check execution summary in merged_outputs.md to determine success rate and adjust your approach.\n\nReport Requirements:\n\n1. EXECUTIVE SUMMARY (2-8 sentences based on available data)\n   - Key finding (or 'Limited data available' if workers failed)\n   - Methodology summary (note any timeouts/failures)\n   - Overall confidence\n\n2. KEY FINDINGS (see adaptive table for minimum count)\n   Each finding MUST include:\n   - Clear title\n   - Detailed explanation (not just headline)\n   - Specific numbers/dates/quotes\n   - Citations [n]\n   - Confidence level\n\n3. DETAILED ANALYSIS\n   - Organized by subtopic\n   - Comprehensive coverage (or note gaps if data is limited)\n\n4. CONTRADICTIONS & UNCERTAINTIES (if any)\n\n5. COVERAGE LIMITATIONS (MANDATORY if workers failed)\n   > Note: This report is based on X of Y planned research angles due to timeouts. Coverage may be incomplete.\n\n6. SOURCES\n   - Full bibliography\n   - [n] Title - URL (Type, Date, Authority)\n\nCRITICAL RULES:\n- Adjust length based on available data (see adaptive table)\n- Every major claim has citation\n- NO EMOJI - plain text only\n- Match query language\n- Include specific data, not generalizations\n- ALWAYS include coverage limitations section if any workers failed\n\nFINAL STEP: Use write_file to save to ./research/{query-slug}/report.md"
 }
 ```
+
+## User Output (Simplified)
+
+**During research, ONLY show user:**
+
+```
+正在研究: {query}
+├── 角度1: {label} [完成]
+├── 角度2: {label} [超时]
+├── 角度3: {label} [完成]
+└── 角度4: {label} [完成]
+
+正在交叉验证... 完成
+
+正在生成报告... 完成
+
+报告已保存: ./research/{query-slug}/report.md
+```
+
+**DO NOT show:**
+- Internal JSON structures
+- Raw search results
+- Individual worker outputs
+- File paths for intermediate files (merged_outputs.md, analysis.md)
+- Detailed error traces
+
+**DO show:**
+- High-level progress (phase names only)
+- Success/failure counts
+- Final report location and summary
 
 ## Phase 6: Recursion (Deep Dive)
 

@@ -19,9 +19,15 @@ default_time_window = "30d"    # 7d | 30d | 90d | 1y
 # Tavily API 配置
 api_key_env = "TAVILY_API_KEY"
 search_depth = "advanced"     # basic | advanced (使用 advanced 获取更深入内容)
-max_results = 10              # 每次搜索返回结果数
+max_results = 8               # 每次搜索返回结果数 (减少以避免超时)
 include_answer = false        # 是否包含 AI 生成的答案
 include_raw_content = false   # 是否包含原始页面内容
+
+[worker]
+# Worker 执行配置
+timeout_seconds = 60          # 单个 worker 超时时间 (秒) - 从600s减少到60s
+max_retries = 1               # 失败重试次数
+retry_backoff_seconds = 5     # 重试间隔
 
 [google_fallback]
 # Google 搜索 fallback 配置
