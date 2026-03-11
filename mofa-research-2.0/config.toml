@@ -1,9 +1,19 @@
-# Deep Research Skill Configuration
+# MOFA Research 2.0 Configuration
+# Inspired by DeerFlow and mofa-research
+
+[research]
+# Research pipeline configuration
+name = "mofa-research-2.0"
+version = "2.0.0"
 
 [search]
-# 搜索方法优先级: tavily | google | auto
-# auto = 先尝试 tavily，失败则 fallback 到 google
+# Search method priority: tavily | google | auto
+# auto = try tavily first, fallback to google
 primary_method = "auto"
+
+# Time-aware search configuration (DeerFlow-inspired)
+temporal_awareness = "strict"  # strict | lenient | off
+default_time_window = "30d"    # 7d | 30d | 90d | 1y
 
 [tavily]
 # Tavily API 配置
@@ -103,7 +113,29 @@ ttl_hours = 24                # 搜索结果缓存时间
 memory_enabled = true         # 是否存入 crew-memory
 
 [hitl]
-# Human-in-the-loop 触发条件
-on_contradiction = true       # 发现矛盾时
-on_low_confidence = true      # 低置信度时
-on_sensitive_topic = true     # 敏感话题时
+# Human-in-the-loop trigger conditions
+on_contradiction = true       # When contradictions found
+on_low_confidence = true      # When confidence is low
+on_sensitive_topic = true     # For sensitive topics
+
+[worker_isolation]
+# DeerFlow-inspired isolated worker contexts
+enabled = true                # Each worker only sees its own task
+hide_other_angles = true      # Workers don't know about other angles
+fresh_context_per_worker = true  # Each worker gets fresh LLM context
+
+[planning]
+# Dynamic angle generation (mofa-research style)
+min_angles = 4                # Minimum search angles
+max_angles = 8                # Maximum search angles
+target_angles = 6             # Target number of angles
+cross_language = true         # Generate angles in multiple languages
+auto_adjust_complexity = true  # Adjust based on query complexity
+
+[synthesis_output]
+# Output configuration (Docling-inspired structure)
+formats = ["markdown", "json"]  # Output formats
+include_raw_knowledgebase = true  # Include merged outputs
+include_analysis = true       # Include analysis report
+include_source_metadata = true  # Include full source metadata
+structured_sections = true    # Use structured section headers
