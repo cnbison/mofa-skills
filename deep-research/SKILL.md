@@ -288,6 +288,39 @@ browser_read
 | 页面 fetch 失败 | 尝试 browser 工具 |
 | 所有搜索失败 | 请求用户提供起始链接 |
 
+## Output Requirements (MANDATORY)
+
+### 必须写入文件
+
+研究完成后，**必须**执行以下写入操作：
+
+1. **最终报告** → `./research/{query-slug}/report.md`
+```bash
+write_file "./research/{query-slug}/report.md" "${report_content}"
+```
+
+2. **知识库** → `./research/{query-slug}/kb/knowledge.json`
+```bash
+write_file "./research/{query-slug}/kb/knowledge.json" "${knowledge_base_json}"
+```
+
+3. **探索日志** → `./research/{query-slug}/exploration_log.json`
+```bash
+write_file "./research/{query-slug}/exploration_log.json" "${exploration_log}"
+```
+
+### 输出规范
+
+- **路径生成**: `query-slug = query.lower().replace(' ', '-').replace('/', '-')[:50]`
+- **报告格式**: Markdown，包含完整引用
+- **同时展示**: 写入文件后，给用户简要总结（3-5 个要点）
+
+### 禁止行为
+
+❌ **不能只对话不写入**
+❌ **不能把报告只存在对话上下文**
+❌ **不能让用户手动要求才写入**
+
 ## File Structure
 
 ```

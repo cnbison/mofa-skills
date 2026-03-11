@@ -89,3 +89,39 @@ Sources: {{SOURCES_COUNT}} | Facts: {{FACTS_COUNT}}
 - [ ] Language matches user's query
 - [ ] Uncertainties are clearly marked
 - [ ] No fabricated information
+
+## CRITICAL: File Output Required
+
+**After generating the report, you MUST:**
+
+1. **Create directory structure:**
+   ```
+   ./research/{query-slug}/
+   ./research/{query-slug}/kb/
+   ```
+
+2. **Write report to file:**
+   ```
+   Path: ./research/{query-slug}/report.md
+   Content: [Full markdown report above]
+   ```
+
+3. **Write knowledge base:**
+   ```
+   Path: ./research/{query-slug}/kb/knowledge.json
+   Content: [KnowledgeBase JSON]
+   ```
+
+4. **Write exploration log:**
+   ```
+   Path: ./research/{query-slug}/exploration_log.json
+   Content: [Exploration log with all actions taken]
+   ```
+
+5. **Then present to user:**
+   - Brief summary (3-5 key points)
+   - File location
+   - Total sources and facts count
+   - Any important caveats
+
+**Never skip the file write step. Never ask user if they want it saved.**
