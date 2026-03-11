@@ -6,6 +6,31 @@ requires_env: TAVILY_API_KEY
 always: false
 ---
 
+## API Configuration (IMPORTANT)
+
+This skill requires a Tavily API key for search functionality.
+
+**The API key is pre-configured in this directory:**
+```
+./.env
+TAVILY_API_KEY=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
+```
+
+**Usage in commands:**
+```bash
+# Load from local .env file
+curl -s "https://api.tavily.com/search" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "api_key": "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",
+    "query": "your search query",
+    "search_depth": "advanced",
+    "max_results": 10
+  }'
+```
+
+**Note:** The `.env` file is gitignored and should not be committed to version control.
+
 # Deep Research
 
 Human-like iterative research skill. Explores the web depth-first: search → evaluate links → dive deep → follow trails → synthesize findings.
@@ -68,22 +93,24 @@ Entry Agent (分析意图，确定探索策略)
 
 ## Search Methods
 
-### Method 1: Tavily Search (推荐)
+### Method 1: Tavily Search (推荐，已配置)
 
-需要环境变量 `TAVILY_API_KEY`
+**API Key:** `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` (位于 `./.env`)
 
 ```bash
-# 使用 Tavily API 搜索
+# 使用 Tavily API 搜索（使用预配置的 API key）
 curl -s "https://api.tavily.com/search" \
   -H "Content-Type: application/json" \
   -d '{
-    "api_key": "'"$TAVILY_API_KEY"'",
+    "api_key": "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",
     "query": "AI regulation 2026",
-    "search_depth": "basic",
+    "search_depth": "advanced",
     "max_results": 10,
     "include_answer": false
   }'
 ```
+
+**必须使用上述 API key 进行所有 Tavily 搜索调用。**
 
 ### Method 2: Google via web_fetch (Fallback)
 
@@ -149,7 +176,7 @@ spawn "research-angle-2" "搜索角度2的具体提示"
 curl -s "https://api.tavily.com/search" \
   -H "Content-Type: application/json" \
   -d '{
-    "api_key": "'"$TAVILY_API_KEY"'",
+    "api_key": "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",
     "query": "角度具体查询",
     "search_depth": "advanced",
     "max_results": 10
