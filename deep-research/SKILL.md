@@ -118,88 +118,177 @@ web_fetch "https://blog.google/technology/ai/"
 web_fetch "https://news.ycombinator.com/"
 ```
 
-## Workflow
+## Workflow (Aggressive Recursive Exploration)
 
-### Phase 1: Entry (意图分析)
+### Phase 1: Entry (意图分解 + 广度规划)
+
+**目标**: 生成 5-8 个独立搜索角度，确保广度覆盖
 
 ```json
 {
   "role": "user",
-  "content": "分析查询意图，确定研究策略。\n\n查询: 'AI regulation 2026'\n\n输出:\n1. 核心主题\n2. 关键子问题 (3-5个)\n3. 探索深度建议 (shallow/medium/deep)\n4. 起始搜索查询 (3个不同角度)"
+  "content": "深度分析查询，生成多角度搜索策略。\n\n查询: 'AI regulation 2026'\n\n要求:\n1. 核心主题识别\n2. 关键子问题 (5-8个，确保不同维度)\n3. 每个子问题生成 2-3 个具体搜索查询\n4. 识别潜在的'新闻线索'（事件→发展→影响→反应链条）\n\n输出格式见 templates/entry-prompt.md"
 }
 ```
 
-### Phase 2: Discovery (搜索发现)
-
-**首选 Tavily：**
+**并行启动 Sub-Agents**:
 
 ```bash
+# 为每个角度启动独立 sub-agent 并行搜索
+spawn "research-angle-1" "搜索角度1的具体提示"
+spawn "research-angle-2" "搜索角度2的具体提示"
+# ... 至少 5 个角度同时搜索
+```
+
+### Phase 2: Discovery (多源并行搜索)
+
+**每个 Sub-Agent 执行**:
+
+```bash
+# 1. Tavily 搜索
 curl -s "https://api.tavily.com/search" \
   -H "Content-Type: application/json" \
   -d '{
     "api_key": "'"$TAVILY_API_KEY"'",
-    "query": "AI regulation policy timeline 2026",
-    "search_depth": "basic",
+    "query": "角度具体查询",
+    "search_depth": "advanced",
     "max_results": 10
-  }' | jq '.results[] | {title, url, content}'
+  }'
+
+# 2. 对同一角度，用不同关键词再次搜索（确保广度）
+curl -s "https://api.tavily.com/search" ... "同义词/相关词查询"
+
+# 3. Tavily 失败时 fallback 到 Google
+web_fetch "https://www.google.com/search?q=...&num=10"
 ```
 
-**Tavily 失败时，fallback 到 Google：**
+**Minimum Breadth Requirement**:
+- 至少 5 个不同角度
+- 每个角度至少 5 个不同来源
+- 至少覆盖 3 种不同类型的源（新闻/学术/官方）
+
+### Phase 3: Deep Dive (递归深入)
+
+**核心规则**: 每发现一个重要线索 → 必须递归搜索 2-3 层
+
+```
+新闻事件发现
+    ↓
+Layer 1: 事件本身（发生了什么）
+    ↓ 发现相关实体/人物/时间
+Layer 2: 背景搜索（为什么发生、历史脉络）
+    ↓ 发现影响因素
+Layer 3: 影响搜索（影响范围、各方反应、后续发展）
+    ↓ 可能发现新的相关事件 → 继续递归
+```
+
+**示例 - 新闻追踪模式**:
 
 ```bash
-web_fetch "https://www.google.com/search?q=AI+regulation+2026&num=10"
-# 然后解析 HTML 提取链接
+# 初始发现: "美国拟收紧AI芯片出口管制"
+web_fetch "新闻页面"
+
+# Layer 1: 事件详情
+提取: 时间(3月6日)、涉及公司(NVIDIA/AMD)、具体措施
+
+# Layer 2: 背景深挖
+spawn "background-search" "搜美国AI芯片管制历史 2022-2025"
+spawn "context-search" "搜 Biden administration semiconductor policy"
+
+# Layer 3: 影响追踪
+spawn "impact-search" "搜 NVIDIA stock reaction export controls"
+spawn "global-search" "搜 China EU response US AI chip ban"
+spawn "industry-search" "搜 AI companies alternative chips"
+
+# Layer 4: 连锁反应（如果发现新线索）
+# 如发现"中国AI芯片突破" → 继续搜中国芯片进展、中芯国际等
 ```
 
-### Phase 3: Evaluate (价值评估)
+**递归触发条件**:
+- 发现具体日期/事件 → 搜前后发展
+- 发现公司/人物 → 搜相关背景/言论
+- 发现数据/统计 → 搜来源和验证
+- 发现政策/法规 → 搜全文和解读
 
-对每个候选链接，LLM 评估：
+### Phase 4: Cross-Reference (交叉验证)
+
+对同一事实，必须从至少 2 个独立来源验证:
+
+```bash
+# 发现 Claim: "EU AI Act 2026年8月生效"
+# 必须搜至少 2 个独立来源确认
+
+web_search "EU AI Act effective date official"
+web_search "EU AI Act August 2026 europa.eu"
+web_search "European Commission AI Act implementation timeline"
+```
+
+### Phase 5: Evaluate (价值评估)
 
 ```json
 {
   "role": "user",
-  "content": "评估以下链接的研究价值:\n\n标题: EU AI Act: What Businesses Need to Know\nURL: https://example.com/eu-ai-act\n摘要: The EU AI Act will be fully effective August 2026...\n\n输出 JSON: {\"relevance\": 0.95, \"authority\": 0.9, \"novelty\": 0.8, \"should_explore\": true, \"reason\": \"...\"}'"
+  "content": "评估深度价值:\n\nURL: ...\n内容摘要: ...\n当前探索深度: Layer 3\n\n输出 JSON:\n{\n  \"relevance\": 0-1,\n  \"authority\": 0-1,\n  \"depth_potential\": 0-1,  // 是否还有更多可挖的线索\n  \"should_explore_deeper\": true/false,  // 是否继续递归\n  \"follow_up_queries\": [\"...\", \"...\"],  // 建议的下一步搜索\n  \"should_explore\": true/false\n}"
 }
 ```
 
-### Phase 4: Explore (深入探索)
+### Phase 6: Knowledge Extraction (知识提取)
 
-对高分链接，获取完整内容：
-
-```bash
-# 获取页面内容
-web_fetch "https://example.com/eu-ai-act"
-
-# 如果页面需要交互，使用 browser 工具
-browser_navigate "https://example.com/eu-ai-act"
-browser_read
-```
-
-### Phase 5: Extract (知识提取)
-
-从页面提取结构化信息：
+从页面提取时，**必须**识别可递归线索:
 
 ```json
 {
-  "role": "user",
-  "content": "从以下页面内容提取知识:\n\n[页面内容...]\n\n输出 JSON:\n{\n  \"facts\": [{\"claim\": \"...\", \"confidence\": \"high\", \"quote\": \"...\"}],\n  \"sources\": [{\"title\": \"...\", \"url\": \"...\", \"date\": \"2026-01-15\"}],\n  \"contradictions\": [...],\n  \"follow_up_links\": [\"url1\", \"url2\"],\n  \"sub_questions\": [\"...\", \"...\"]\n}"
+  "facts": [...],
+  "sources": [...],
+  "recursion_candidates": [  // 必须识别的新线索
+    {
+      "type": "event|person|company|data|policy",
+      "entity": "具体名称",
+      "suggested_queries": ["...", "..."],
+      "priority": "high|medium|low"
+    }
+  ]
 }
 ```
 
-### Phase 6: Loop (循环迭代)
+### Phase 7: Recursive Loop (强制递归)
 
-检查是否需要继续：
+**不满足以下条件不得停止**:
 
 ```
-结束条件 (满足任一即停止):
-- 已探索 N 个深度链接 (config.max_depth_links)
-- 已收集 M 个 facts (config.min_facts)
-- 连续 3 次未发现新线索
-- 知识覆盖度 > 80% (自评估)
-- 用户明确要求停止
+MINIMUM REQUIREMENTS:
+✓ 至少深入 3 层递归 (Layer 1-2-3)
+✓ 至少 5 个不同搜索角度
+✓ 至少 15 个不同来源
+✓ 至少 25 个 facts
+✓ 每个重要事件都有: 背景 + 现状 + 影响 + 反应
+✓ 连续 5 次递归未发现新线索（而非 3 次）
 ```
 
-### Phase 7: Synthesize (综合报告)
+**递归循环代码逻辑**:
+
+```python
+while not meeting_minimum_requirements():
+    # 1. 检查所有未探索的高优先级 recursion_candidates
+    for candidate in kb.recursion_candidates:
+        if candidate.priority == "high":
+            # 启动新搜索
+            results = search(candidate.suggested_queries)
+
+            # 2. 评估是否值得继续深入
+            if evaluate(results).should_explore_deeper:
+                # 继续递归 (Layer N+1)
+                dive_deeper(results)
+
+    # 3. 检查是否达到最小要求
+    if check_minimum_requirements():
+        # 再额外探索 2 轮确保饱和
+        for _ in range(2):
+            extra_exploration()
+        break
+```
+
+### Phase 8: Synthesize (综合报告)
 
 ```json
 {
@@ -314,12 +403,13 @@ write_file "./research/{query-slug}/exploration_log.json" "${exploration_log}"
 - **路径生成**: `query-slug = query.lower().replace(' ', '-').replace('/', '-')[:50]`
 - **报告格式**: Markdown，包含完整引用
 - **同时展示**: 写入文件后，给用户简要总结（3-5 个要点）
+- **禁止 Emoji**: 报告和总结中不要使用任何 emoji 或 Unicode 符号，保持专业纯文本格式
 
 ### 禁止行为
 
-❌ **不能只对话不写入**
-❌ **不能把报告只存在对话上下文**
-❌ **不能让用户手动要求才写入**
+[禁止] **不能只对话不写入**
+[禁止] **不能把报告只存在对话上下文**
+[禁止] **不能让用户手动要求才写入**
 
 ## File Structure
 

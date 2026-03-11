@@ -8,7 +8,7 @@ primary_method = "auto"
 [tavily]
 # Tavily API 配置
 api_key_env = "TAVILY_API_KEY"
-search_depth = "basic"        # basic | advanced
+search_depth = "advanced"     # basic | advanced (使用 advanced 获取更深入内容)
 max_results = 10              # 每次搜索返回结果数
 include_answer = false        # 是否包含 AI 生成的答案
 include_raw_content = false   # 是否包含原始页面内容
@@ -20,32 +20,52 @@ max_results = 10
 user_agent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
 
 [exploration]
-# 探索深度限制
-max_depth_links = 15          # 单个研究最多深入探索的链接数
-max_iterations = 10           # 探索循环最大次数
-max_sub_questions = 5         # 衍生子问题最大数量
+# 探索深度配置 (AGGRESSIVE)
+max_depth_links = 30          # 单个研究最多深入探索的链接数 (增加)
+max_iterations = 20           # 探索循环最大次数 (增加)
+max_sub_questions = 8         # 衍生子问题最大数量 (增加)
+min_recursion_depth = 3       # 最小递归深度 (Layer 1-2-3 必须完成)
+extra_exploration_rounds = 2  # 达到最小要求后额外探索的轮数
+
+[parallel]
+# 并行搜索配置
+min_angles = 5                # 最少搜索角度数
+max_concurrent_agents = 5     # 最大并发 sub-agents
 
 [evaluation]
 # 链接评估阈值
-score_threshold = 0.6         # 值得探索的最低综合分数 (0-1)
-min_authority = 0.3           # 最低权威性要求
-min_relevance = 0.5           # 最低相关性要求
+score_threshold = 0.5         # 值得探索的最低综合分数 (降低以探索更多)
+min_authority = 0.2           # 最低权威性要求 (降低)
+min_relevance = 0.4           # 最低相关性要求 (降低)
 
 # 权重配置
-relevance_weight = 0.35       # 相关性权重
-authority_weight = 0.35       # 权威性权重
-novelty_weight = 0.2          # 新颖性权重
-depth_weight = 0.1            # 深度潜力权重
+relevance_weight = 0.3        # 相关性权重
+authority_weight = 0.3        # 权威性权重
+novelty_weight = 0.25         # 新颖性权重 (提高)
+depth_weight = 0.15           # 深度潜力权重 (提高)
 
 [knowledge]
-# 知识收集目标
-min_facts = 10                # 最少收集 facts 数
-target_facts = 20             # 目标 facts 数
-max_facts = 50                # 上限，防止无限收集
+# 知识收集目标 (AGGRESSIVE)
+min_facts = 25                # 最少收集 facts 数 (提高)
+target_facts = 40             # 目标 facts 数 (提高)
+max_facts = 80                # 上限，防止无限收集 (提高)
+min_sources = 15              # 最少来源数 (新增)
+min_source_types = 3          # 最少来源类型数 (新闻/学术/官方等)
 
 # 结束条件
-coverage_threshold = 0.8      # 知识覆盖度阈值 (自评估)
-stagnation_limit = 3          # 连续未发现新线索的最大次数
+coverage_threshold = 0.85     # 知识覆盖度阈值 (提高)
+stagnation_limit = 5          # 连续未发现新线索的最大次数 (提高)
+
+[cross_reference]
+# 交叉验证配置
+min_verification_sources = 2  # 每个重要事实最少验证来源数
+verification_required = true  # 是否强制要求验证
+
+[recursion]
+# 递归探索配置
+auto_recursion = true         # 自动递归探索
+max_recursion_depth = 4       # 最大递归深度
+recursion_triggers = ["event", "person", "company", "data", "policy"]
 
 [authority_domains]
 # 权威性评分映射 (0-1)
@@ -55,10 +75,18 @@ low = ["medium.com", "substack.com", "blogspot.com", "wordpress.com"]
 
 [synthesis]
 # 报告生成配置
-max_report_length = 8000      # 报告最大长度 (字符)
+max_report_length = 15000     # 报告最大长度 (字符，增加)
+min_report_length = 3000      # 报告最小长度 (字符，新增)
 include_contradictions = true # 是否包含矛盾部分
 include_uncertainties = true  # 是否包含不确定部分
-min_citations = 3             # 最少引用数
+include_methodology = true    # 是否包含方法论说明
+min_citations = 5             # 最少引用数 (提高)
+
+[formatting]
+# 格式要求
+use_emoji = false             # 禁止使用 emoji
+use_tables = true             # 鼓励使用表格整理信息
+use_headers = true            # 使用层级标题
 
 [cache]
 # 缓存配置
