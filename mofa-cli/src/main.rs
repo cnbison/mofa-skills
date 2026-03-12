@@ -278,6 +278,34 @@ fn run_plugin(tool_name: &str) -> Result<()> {
     Ok(())
 }
 
+/// Resolve a temp directory under CREW_DATA_DIR/tmp/ if available, else system temp.
+/// Creates the directory if it doesn't exist.
+fn resolve_temp_dir(prefix: &str) -> PathBuf {
+    let base = std::env::var("CREW_DATA_DIR")
+        .map(|d| PathBuf::from(d).join("tmp"))
+        .unwrap_or_else(|_| std::env::temp_dir());
+    let dir = base.join(format!("{prefix}-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).ok();
+    dir
+}
+
+/// Relocate a path under CREW_DATA_DIR/tmp/ if CREW_DATA_DIR is set and the path
+/// is under the system temp directory. This ensures per-profile isolation.
+fn relocate_path(path: &std::path::Path) -> PathBuf {
+    if let Ok(data_dir) = std::env::var("CREW_DATA_DIR") {
+        let sys_tmp = std::env::temp_dir();
+        if path.starts_with(&sys_tmp) {
+            let relative = path.strip_prefix(&sys_tmp).unwrap_or(path);
+            let relocated = PathBuf::from(&data_dir).join("tmp").join(relative);
+            if let Some(parent) = relocated.parent() {
+                std::fs::create_dir_all(parent).ok();
+            }
+            return relocated;
+        }
+    }
+    path.to_path_buf()
+}
+
 fn plugin_slides(
     args: &serde_json::Value,
     mofa_root: &std::path::Path,
@@ -286,14 +314,10 @@ fn plugin_slides(
     let style_name = args.get("style").and_then(|v| v.as_str()).unwrap_or("nb-pro");
     let out_str = args.get("out").and_then(|v| v.as_str())
         .ok_or_else(|| eyre::eyre!("missing 'out' (output PPTX path)"))?;
-    let out = PathBuf::from(out_str);
+    let out = relocate_path(std::path::Path::new(out_str));
     let slide_dir = args.get("slide_dir").and_then(|v| v.as_str())
-        .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            let dir = std::env::temp_dir().join(format!("mofa-slides-{}", std::process::id()));
-            std::fs::create_dir_all(&dir).ok();
-            dir
-        });
+        .map(|s| relocate_path(std::path::Path::new(s)))
+        .unwrap_or_else(|| resolve_temp_dir("mofa-slides"));
     let concurrency = args.get("concurrency").and_then(|v| v.as_u64()).unwrap_or(5) as usize;
     let image_size = args.get("image_size").and_then(|v| v.as_str());
     let gen_model = args.get("gen_model").and_then(|v| v.as_str());
@@ -334,7 +358,7 @@ fn plugin_cards(
 ) -> Result<String> {
     let style_name = args.get("style").and_then(|v| v.as_str()).unwrap_or("cny-guochao");
     let card_dir = args.get("card_dir").and_then(|v| v.as_str())
-        .map(PathBuf::from)
+        .map(|s| relocate_path(std::path::Path::new(s)))
         .ok_or_else(|| eyre::eyre!("missing 'card_dir'"))?;
     let aspect = args.get("aspect").and_then(|v| v.as_str());
     let concurrency = args.get("concurrency").and_then(|v| v.as_u64()).unwrap_or(5) as usize;
@@ -367,9 +391,9 @@ fn plugin_comic(
     let style_name = args.get("style").and_then(|v| v.as_str()).unwrap_or("xkcd");
     let out_str = args.get("out").and_then(|v| v.as_str())
         .ok_or_else(|| eyre::eyre!("missing 'out' (output PNG path)"))?;
-    let out = PathBuf::from(out_str);
+    let out = relocate_path(std::path::Path::new(out_str));
     let work_dir = args.get("work_dir").and_then(|v| v.as_str())
-        .map(PathBuf::from)
+        .map(|s| relocate_path(std::path::Path::new(s)))
         .unwrap_or_else(|| out.parent().unwrap_or(std::path::Path::new(".")).to_path_buf());
     let layout = args.get("layout").and_then(|v| v.as_str()).unwrap_or("horizontal");
     let concurrency = args.get("concurrency").and_then(|v| v.as_u64()).unwrap_or(3) as usize;
@@ -404,9 +428,9 @@ fn plugin_infographic(
     let style_name = args.get("style").and_then(|v| v.as_str()).unwrap_or("cyberpunk-neon");
     let out_str = args.get("out").and_then(|v| v.as_str())
         .ok_or_else(|| eyre::eyre!("missing 'out' (output PNG path)"))?;
-    let out = PathBuf::from(out_str);
+    let out = relocate_path(std::path::Path::new(out_str));
     let work_dir = args.get("work_dir").and_then(|v| v.as_str())
-        .map(PathBuf::from)
+        .map(|s| relocate_path(std::path::Path::new(s)))
         .unwrap_or_else(|| out.parent().unwrap_or(std::path::Path::new(".")).to_path_buf());
     let concurrency = args.get("concurrency").and_then(|v| v.as_u64()).unwrap_or(3) as usize;
     let image_size = args.get("image_size").and_then(|v| v.as_str());
@@ -441,7 +465,7 @@ fn plugin_video(
     let style_name = args.get("style").and_then(|v| v.as_str()).unwrap_or("video-card");
     let anim_style_name = args.get("anim_style").and_then(|v| v.as_str()).unwrap_or("shuimo");
     let card_dir = args.get("card_dir").and_then(|v| v.as_str())
-        .map(PathBuf::from)
+        .map(|s| relocate_path(std::path::Path::new(s)))
         .ok_or_else(|| eyre::eyre!("missing 'card_dir'"))?;
     let bgm = args.get("bgm").and_then(|v| v.as_str()).map(std::path::Path::new);
     let aspect = args.get("aspect").and_then(|v| v.as_str()).unwrap_or("9:16");

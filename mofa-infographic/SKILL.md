@@ -9,11 +9,16 @@ requires_env: GEMINI_API_KEY
 
 CLI: `mofa infographic` | Styles: `mofa-infographic/styles/*.toml` | Config: `mofa/config.json`
 
-## Quick Start
+## Output Paths
 
-```bash
-mofa infographic --style cyberpunk-neon --out poster.png --work-dir /tmp/sections -i sections.json
+**IMPORTANT**: Always use a unique per-request subdirectory to avoid conflicts between users:
+
 ```
+/tmp/mofa-infographic-<YYYYMMDD-HHMMSS>/poster.png
+/tmp/mofa-infographic-<YYYYMMDD-HHMMSS>/sections/
+```
+
+Never reuse paths like `/tmp/poster.png` — each request MUST get its own directory.
 
 ## Interaction Guide
 

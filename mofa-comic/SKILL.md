@@ -9,11 +9,16 @@ requires_env: GEMINI_API_KEY
 
 CLI: `mofa comic` | Styles: `mofa-comic/styles/*.toml` | Config: `mofa/config.json`
 
-## Quick Start
+## Output Paths
 
-```bash
-mofa comic --style xkcd --layout grid --out comic.png --work-dir /tmp/panels -i panels.json
+**IMPORTANT**: Always use a unique per-request subdirectory to avoid conflicts between users:
+
 ```
+/tmp/mofa-comic-<YYYYMMDD-HHMMSS>/comic.png
+/tmp/mofa-comic-<YYYYMMDD-HHMMSS>/panels/
+```
+
+Never reuse paths like `/tmp/comic.png` — each request MUST get its own directory.
 
 ## Interaction Guide
 
