@@ -114,10 +114,77 @@ fn api_base_url() -> String {
 
 fn http_client() -> reqwest::blocking::Client {
     reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(120))
+        // No global timeout — streaming PCM chunks keep the connection alive.
         .connect_timeout(Duration::from_secs(5))
         .build()
         .expect("failed to build HTTP client")
+}
+
+/// Wrap raw PCM bytes (16-bit signed LE, mono) in a WAV header.
+fn pcm_to_wav(pcm: &[u8], sample_rate: u32) -> Vec<u8> {
+    let data_len = pcm.len() as u32;
+    let file_len = 36 + data_len;
+    let mut wav = Vec::with_capacity(44 + pcm.len());
+    wav.extend_from_slice(b"RIFF");
+    wav.extend_from_slice(&file_len.to_le_bytes());
+    wav.extend_from_slice(b"WAVE");
+    wav.extend_from_slice(b"fmt ");
+    wav.extend_from_slice(&16u32.to_le_bytes());
+    wav.extend_from_slice(&1u16.to_le_bytes()); // PCM
+    wav.extend_from_slice(&1u16.to_le_bytes()); // mono
+    wav.extend_from_slice(&sample_rate.to_le_bytes());
+    wav.extend_from_slice(&(sample_rate * 2).to_le_bytes());
+    wav.extend_from_slice(&2u16.to_le_bytes());
+    wav.extend_from_slice(&16u16.to_le_bytes());
+    wav.extend_from_slice(b"data");
+    wav.extend_from_slice(&data_len.to_le_bytes());
+    wav.extend_from_slice(pcm);
+    wav
+}
+
+/// Call TTS endpoint, handle both streaming PCM and WAV responses.
+fn fetch_tts_wav(
+    client: &reqwest::blocking::Client,
+    url: &str,
+    body: &serde_json::Value,
+) -> Result<Vec<u8>, String> {
+    let resp = client
+        .post(url)
+        .json(body)
+        .send()
+        .map_err(|e| format!("TTS request failed: {e}"))?;
+
+    let status = resp.status();
+    if !status.is_success() {
+        let resp_text = resp.text().unwrap_or_default();
+        return Err(format!(
+            "TTS error (HTTP {status}): {}",
+            truncate(&resp_text, 200)
+        ));
+    }
+
+    let content_type = resp
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .to_string();
+
+    let bytes = resp
+        .bytes()
+        .map_err(|e| format!("Failed to read TTS response: {e}"))?;
+
+    if bytes.is_empty() {
+        return Err("TTS returned empty response".to_string());
+    }
+
+    // If already WAV, pass through
+    if content_type.contains("wav") || (bytes.len() >= 4 && &bytes[..4] == b"RIFF") {
+        return Ok(bytes.to_vec());
+    }
+
+    // Raw PCM → wrap in WAV header (24kHz, 16-bit, mono)
+    Ok(pcm_to_wav(&bytes, 24000))
 }
 
 fn check_health(client: &reqwest::blocking::Client, base_url: &str) -> Result<(), String> {
@@ -219,48 +286,32 @@ fn handle_tts(input_json: &str) {
         reg.default_voice.unwrap_or_else(|| "vivian".to_string())
     });
 
-    let body = if let Some(ref_path) = resolve_custom_voice(&voice_name) {
-        // Custom voice → use reference_audio for x-vector cloning
-        json!({
-            "input": input.text,
-            "reference_audio": ref_path.to_string_lossy(),
-            "language": language
-        })
+    let (endpoint, body) = if let Some(ref_path) = resolve_custom_voice(&voice_name) {
+        // Custom voice → use /v1/audio/speech/clone (always returns WAV)
+        (
+            format!("{base_url}/v1/audio/speech/clone"),
+            json!({
+                "input": input.text,
+                "reference_audio": ref_path.to_string_lossy(),
+                "language": language
+            }),
+        )
     } else {
-        // Preset voice
-        json!({
-            "input": input.text,
-            "voice": voice_name,
-            "language": language
-        })
+        // Preset voice → use /v1/audio/speech (streaming PCM, converted to WAV)
+        (
+            format!("{base_url}/v1/audio/speech"),
+            json!({
+                "input": input.text,
+                "voice": voice_name,
+                "language": language
+            }),
+        )
     };
 
-    let resp = match client
-        .post(format!("{base_url}/v1/audio/speech"))
-        .json(&body)
-        .send()
-    {
-        Ok(r) => r,
-        Err(e) => fail(&format!("TTS request failed: {e}")),
-    };
-
-    let status = resp.status();
-    if !status.is_success() {
-        let resp_text = resp.text().unwrap_or_default();
-        fail(&format!(
-            "TTS error (HTTP {status}): {}",
-            truncate(&resp_text, 200)
-        ));
-    }
-
-    let wav_bytes = match resp.bytes() {
+    let wav_bytes = match fetch_tts_wav(&client, &endpoint, &body) {
         Ok(b) => b,
-        Err(e) => fail(&format!("Failed to read TTS response: {e}")),
+        Err(e) => fail(&e),
     };
-
-    if wav_bytes.len() < 44 {
-        fail("TTS returned invalid WAV data (too small)");
-    }
 
     if let Err(e) = std::fs::write(&output_path, &wav_bytes) {
         fail(&format!("Failed to write {output_path}: {e}"));

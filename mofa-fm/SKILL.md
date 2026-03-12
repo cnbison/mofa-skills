@@ -54,6 +54,31 @@ vivian (default), serena, ryan, aiden, eric, dylan, uncle_fu, ono_anna, sohee
 Set `OMINIX_API_URL` to point to the ominix-api server (default: `http://localhost:8080`).
 Set `CREW_DATA_DIR` for per-profile voice storage (set automatically by crew gateway).
 
+## API Endpoints
+
+Two separate ominix-api endpoints are used:
+
+- **Preset voices** → `POST /v1/audio/speech` (uses CustomVoice model)
+- **Custom/cloned voices** → `POST /v1/audio/speech/clone` (uses Base model with ECAPA-TDNN)
+
+The plugin automatically routes to the correct endpoint based on the voice name.
+
+### Audio Format
+
+The default TTS API response format is **WAV** (16-bit PCM, mono, 24kHz). For long text, the API automatically splits input at sentence boundaries and synthesizes each sentence independently (sentence-level pseudo-streaming), so the client receives first audio quickly while later sentences are still generating.
+
+The plugin auto-detects the response format:
+
+- **WAV response** (RIFF header detected or `Content-Type: audio/wav`) → saves as-is
+- **PCM response** (`Content-Type: audio/pcm`) → wraps in WAV header before saving
+
+### Concurrency
+
+The ominix-api inference thread is single-threaded (MLX models are not `Send`/`Sync`). Concurrent TTS requests queue sequentially. For production:
+
+- Run separate ominix-api instances for ASR and TTS on different ports
+- Point `OMINIX_API_URL` to the TTS instance for this skill
+
 ## Tools
 
 ### fm_tts
