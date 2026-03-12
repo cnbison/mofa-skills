@@ -13,7 +13,8 @@
       "description": "Local inference server for Qwen3 TTS with voice cloning on Apple Silicon"
     },
     "models": {
-      "Qwen3-TTS-12Hz-1.7B-Base-8bit": "~/.OminiX/models/Qwen3-TTS-12Hz-1.7B-Base-8bit"
+      "Qwen3-TTS-12Hz-1.7B-CustomVoice-8bit": "~/.OminiX/models/Qwen3-TTS-12Hz-1.7B-CustomVoice-8bit (preset voices)",
+      "Qwen3-TTS-12Hz-1.7B-Base": "~/.OminiX/models/Qwen3-TTS-12Hz-1.7B-Base (voice cloning)"
     }
   },
   "tools": [

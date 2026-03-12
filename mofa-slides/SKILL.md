@@ -10,11 +10,18 @@ requires_env: GEMINI_API_KEY
 
 CLI: `mofa slides` | Styles: `mofa-slides/styles/*.toml` | Config: `mofa/config.json`
 
-## Quick Start
+## Output Paths
 
-```bash
-mofa slides --style nb-pro --out deck.pptx --slide-dir /tmp/slides -i slides.json
+**IMPORTANT**: Always use a unique per-request subdirectory to avoid conflicts between users:
+
 ```
+/tmp/mofa-slides-<YYYYMMDD-HHMMSS>/slides.pptx
+/tmp/mofa-slides-<YYYYMMDD-HHMMSS>/slide-dir/
+```
+
+Example: `"out": "/tmp/mofa-slides-20260308-143022/deck.pptx"`, `"slide_dir": "/tmp/mofa-slides-20260308-143022/imgs"`
+
+Never reuse paths like `/tmp/slides.pptx` — each request MUST get its own directory.
 
 ## Interaction Guide
 

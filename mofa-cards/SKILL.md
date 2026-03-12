@@ -11,6 +11,16 @@ CLI: `mofa cards`
 Styles: `mofa-cards/styles/*.toml`
 Config: `mofa/config.json`
 
+## Output Paths
+
+**IMPORTANT**: Always use a unique per-request subdirectory to avoid conflicts between users:
+
+```
+/tmp/mofa-cards-<YYYYMMDD-HHMMSS>/
+```
+
+Never reuse paths like `/tmp/cards/` — each request MUST get its own directory.
+
 ## Interaction Guide
 
 Before generating, gather preferences interactively. On Telegram, use inline keyboard buttons:

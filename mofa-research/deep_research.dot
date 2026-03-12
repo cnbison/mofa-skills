@@ -25,7 +25,7 @@ digraph deep_research {
         planner_model="strong",
         tools="deep_search,read_file",
         max_tasks="8",
-        timeout_secs="600"
+        timeout_secs="1800"
     ]
 
     // --- Analysis: cross-reference all search results ---
@@ -34,7 +34,7 @@ digraph deep_research {
         label="Analysis",
         model="strong",
         tools="read_file",
-        timeout_secs="300"
+        timeout_secs="1800"
     ]
 
     // --- Synthesis: produce the final report ---
@@ -44,7 +44,7 @@ digraph deep_research {
         model="strong",
         tools="write_file",
         goal_gate="true",
-        timeout_secs="600"
+        timeout_secs="1800"
     ]
 
     // --- Edges ---
