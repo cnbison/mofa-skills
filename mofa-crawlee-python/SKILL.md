@@ -9,6 +9,77 @@ always: false
 
 A comprehensive skill for teaching AI to use [Crawlee-Python](https://github.com/apify/crawlee-python) - Apify's robust web scraping and browser automation library.
 
+## Onboarding / 开始使用
+
+### 前置要求
+
+1. **Python 3.9+**
+   ```bash
+   python3 --version  # 需 >= 3.9
+   ```
+
+2. **安装 Crawlee-Python**
+   ```bash
+   # 基础安装
+   pip install crawlee
+
+   # 带 BeautifulSoup 支持
+   pip install 'crawlee[beautifulsoup]'
+
+   # 带 Playwright 浏览器支持 (推荐)
+   pip install 'crawlee[playwright]'
+   playwright install
+
+   # 带 Parsel 支持
+   pip install 'crawlee[parsel]'
+
+   # 完整安装
+   pip install 'crawlee[all]'
+   playwright install
+   ```
+
+3. **验证安装**
+   ```bash
+   python3 -c "from crawlee import Crawler; print('Crawlee installed successfully')"
+   ```
+
+### 快速开始
+
+```python
+# basic_crawler.py
+import asyncio
+from crawlee import Crawler, Request
+
+async def main():
+    crawler = Crawler()
+
+    @crawler.router.default_handler
+    async def handler(context):
+        context.log.info(f'Processing {context.request.url}')
+        title = await context.page.title()
+        await context.push_data({'url': context.request.url, 'title': title})
+
+    await crawler.run([Request.from_url('https://example.com')])
+
+if __name__ == '__main__':
+    asyncio.run(main())
+```
+
+运行:
+```bash
+python3 basic_crawler.py
+```
+
+### 故障排除
+
+| 问题 | 解决方案 |
+|-----|---------|
+| `ModuleNotFoundError: No module named 'crawlee'` | 重新安装: `pip install crawlee` |
+| `playwright not found` | 运行 `playwright install` |
+| `Browser not found` | 安装浏览器: `playwright install chromium` |
+| `Permission denied` | 使用 `pip install --user` 或虚拟环境 |
+| `Python version error` | 升级至 Python 3.9+: `brew install python3` |
+
 ## What is Crawlee-Python?
 
 Crawlee is a battle-tested web scraping library that provides:
