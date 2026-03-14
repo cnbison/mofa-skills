@@ -48,6 +48,13 @@ class MoFAFMClient:
         resp.raise_for_status()
         return resp.json()
 
+    def _patch(self, path: str, data: Dict, auth: bool = False) -> Dict:
+        """PATCH 请求"""
+        url = urljoin(self.BASE_URL + "/", path.lstrip("/"))
+        resp = self.session.patch(url, headers=self._headers(auth), json=data)
+        resp.raise_for_status()
+        return resp.json()
+
     def _delete(self, path: str, auth: bool = False) -> Dict:
         """DELETE 请求"""
         url = urljoin(self.BASE_URL + "/", path.lstrip("/"))
@@ -186,7 +193,7 @@ class MoFAFMClient:
         Returns:
             更新后的单集详情
         """
-        return self._put(f"/podcasts/episodes/{episode_id}/update-script/", {
+        return self._patch(f"/podcasts/episodes/{episode_id}/update-script/", {
             "script": script
         }, auth=True)
 
