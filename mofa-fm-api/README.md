@@ -70,6 +70,13 @@ client.update_episode_script(episode_id=123, script=script_content)
 
 # 列出所有脚本会话
 sessions = client.list_script_sessions()
+
+# 将脚本会话转为播客单集
+episode = client.finalize_script_session(
+    session_id=session["id"],
+    show_slug="my-show",
+    title="AI播客第1期"
+)
 ```
 
 ## CLI 使用脚本功能

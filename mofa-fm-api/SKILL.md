@@ -234,6 +234,21 @@ requests.put(
     headers=headers,
     json={"script": script}
 )
+
+# 9. 上传参考文件到脚本会话
+with open("article.pdf", "rb") as f:
+    requests.post(
+        f"{BASE_URL}/podcasts/script-sessions/{session['id']}/upload/",
+        headers=headers,
+        files={"file": f}
+    )
+
+# 10. 将脚本会话转换为播客单集
+episode = requests.post(
+    f"{BASE_URL}/podcasts/script-sessions/{session['id']}/finalize/",
+    headers=headers,
+    json={"show_slug": "my-show", "title": "AI播客第1期"}
+).json()
 ```
 
 ### cURL
