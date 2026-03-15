@@ -34,6 +34,8 @@ User's button press arrives as `[callback] voice:vivian`.
 ## Features
 
 - **Text-to-Speech** with preset or custom voices
+- **Emotion/Style Control**: Use natural language prompts to control speaking style (excited, sad, cheerful, shout, sarcastic, soft, panic)
+- **Speed Control**: Adjust speech speed from 0.5x to 2.0x
 - **Voice Cloning**: Upload a 3-10s audio clip, save it as a named voice, reuse it anytime
 - **Voice Management**: Save, list, and delete custom voice profiles
 

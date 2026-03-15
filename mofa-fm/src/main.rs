@@ -28,6 +28,12 @@ struct TtsInput {
     output_path: Option<String>,
     #[serde(default)]
     language: Option<String>,
+    /// Style/emotion prompt (e.g. "用兴奋激动的语气说话，充满热情和活力")
+    #[serde(default)]
+    prompt: Option<String>,
+    /// Speed factor: >1.0 = faster, <1.0 = slower (0.5-2.0)
+    #[serde(default)]
+    speed: Option<f32>,
 }
 
 #[derive(Deserialize)]
@@ -307,24 +313,32 @@ fn handle_tts(input_json: &str) {
 
     let (endpoint, body) = if let Some(ref_path) = resolve_custom_voice(&voice_name) {
         // Custom voice → clone port directly (Base model)
-        (
-            format!("{}/v1/audio/speech/clone", clone_url()),
-            json!({
-                "input": input.text,
-                "reference_audio": ref_path.to_string_lossy(),
-                "language": language
-            }),
-        )
+        let mut body = json!({
+            "input": input.text,
+            "reference_audio": ref_path.to_string_lossy(),
+            "language": language
+        });
+        if let Some(ref prompt) = input.prompt {
+            body["prompt"] = json!(prompt);
+        }
+        if let Some(speed) = input.speed {
+            body["speed"] = json!(speed);
+        }
+        (format!("{}/v1/audio/speech/clone", clone_url()), body)
     } else {
         // Preset voice → TTS port directly (CustomVoice model)
-        (
-            format!("{}/v1/audio/speech", tts_url()),
-            json!({
-                "input": input.text,
-                "voice": voice_name,
-                "language": language
-            }),
-        )
+        let mut body = json!({
+            "input": input.text,
+            "voice": voice_name,
+            "language": language
+        });
+        if let Some(ref prompt) = input.prompt {
+            body["prompt"] = json!(prompt);
+        }
+        if let Some(speed) = input.speed {
+            body["speed"] = json!(speed);
+        }
+        (format!("{}/v1/audio/speech", tts_url()), body)
     };
 
     let wav_bytes = match fetch_tts_wav(&client, &endpoint, &body) {
