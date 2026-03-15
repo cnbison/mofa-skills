@@ -1,0 +1,17 @@
+{
+  "name": "mofa-skills",
+  "description": "AI-powered content creation suite: visual generation, TTS voice cloning, research, and workflow automation",
+  "repo": "mofa-org/mofa-skills",
+  "requires": ["git", "cargo"],
+  "tags": [
+    "ai", "pptx", "image-gen", "gemini", "batch-api",
+    "comic", "manga", "xkcd", "snoopy",
+    "infographic", "tshirt", "print", "art-deco", "matisse", "cubism", "symbolism", "ligne-claire", "woodcut",
+    "research", "deep-research",
+    "tts", "voice-cloning", "speech", "audio", "qwen3-tts", "emotion", "style-control", "speed-control",
+    "news", "rss",
+    "github", "issues", "pull-requests",
+    "workflow", "automation"
+  ],
+  "exclude_skills": ["mofa-cli", "mofa-mcdonalds", "mofa-public-apis", "mofa-video", "mofa-videolizer", "mofa-research-2.0", "mofa-web", "mofa-pdf"]
+}
