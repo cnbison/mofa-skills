@@ -21,10 +21,17 @@
   ],
   "dependencies": {
     "ominix-api": {
+      "version": "1.0.0",
       "repo": "https://github.com/OminiX-ai/OminiX-MLX",
       "crate": "ominix-api",
       "features": ["tts"],
       "description": "Local inference server for Qwen3 TTS with voice cloning on Apple Silicon"
+    },
+    "ominix-mlx": {
+      "version": "1.0.0",
+      "repo": "https://github.com/OminiX-ai/OminiX-MLX",
+      "crates": ["qwen3-tts-mlx", "mlx-rs-core"],
+      "description": "MLX inference runtime for Qwen3-TTS on Apple Silicon"
     },
     "models": {
       "Qwen3-TTS-12Hz-1.7B-CustomVoice-8bit": "~/.OminiX/models/Qwen3-TTS-12Hz-1.7B-CustomVoice-8bit (preset voices)",

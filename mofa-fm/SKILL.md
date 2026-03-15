@@ -34,9 +34,15 @@ User's button press arrives as `[callback] voice:vivian`.
 ## Features
 
 - **Text-to-Speech** with preset or custom voices
-- **Emotion/Style Control**: Use natural language prompts to control speaking style (excited, sad, cheerful, shout, sarcastic, soft, panic)
+- **Emotion/Style Control**: Use natural language prompts to control speaking style (excited, sad, cheerful, shout, sarcastic, soft, panic). Works with both preset and cloned voices.
 - **Speed Control**: Adjust speech speed from 0.5x to 2.0x
 - **Voice Cloning**: Upload a 3-10s audio clip, save it as a named voice, reuse it anytime
+
+> **Note on cloned voice + emotion**: Emotion control on cloned voices is experimental — the Base
+> model was not specifically trained for this combination. Emotion effects are weaker than with
+> preset speakers. Some emotions (sad, angry, soft) work well; others (fearful, surprised) may
+> sound flat. Use short prompts like "用悲伤的语气说". Native support is expected with the upcoming
+> Qwen3-TTS-25Hz-VoiceEditing model.
 - **Voice Management**: Save, list, and delete custom voice profiles
 
 ## Preset Voices

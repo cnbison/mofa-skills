@@ -213,13 +213,34 @@ fn fetch_tts_wav(
     Ok(pcm_to_wav(&bytes, 24000))
 }
 
+/// Minimum ominix-api version required (prompt + speed support).
+const MIN_OMINIX_VERSION: &str = "1.0.0";
+
 fn check_health(client: &reqwest::blocking::Client, base_url: &str) -> Result<(), String> {
     match client
         .get(format!("{base_url}/health"))
         .timeout(Duration::from_secs(5))
         .send()
     {
-        Ok(resp) if resp.status().is_success() => Ok(()),
+        Ok(resp) if resp.status().is_success() => {
+            // Check version from health response
+            if let Ok(body) = resp.json::<serde_json::Value>() {
+                if let Some(version) = body.get("version").and_then(|v| v.as_str()) {
+                    if !version_gte(version, MIN_OMINIX_VERSION) {
+                        return Err(format!(
+                            "ominix-api {version} is too old (need >= {MIN_OMINIX_VERSION}).\n\
+                             Upgrade: cargo install --git https://github.com/OminiX-ai/OminiX-MLX ominix-api --features tts --force"
+                        ));
+                    }
+                } else {
+                    eprintln!(
+                        "Warning: ominix-api at {base_url} does not report version. \
+                         Consider upgrading for prompt/speed support."
+                    );
+                }
+            }
+            Ok(())
+        }
         Ok(resp) => Err(format!(
             "ominix-api returned HTTP {} at {base_url}. Check server logs.",
             resp.status()
@@ -247,6 +268,23 @@ fn check_health(client: &reqwest::blocking::Client, base_url: &str) -> Result<()
             }
         }
     }
+}
+
+/// Simple semver comparison: is `have` >= `need`?
+fn version_gte(have: &str, need: &str) -> bool {
+    let parse = |s: &str| -> Vec<u32> {
+        s.split('.').filter_map(|p| p.parse().ok()).collect()
+    };
+    let h = parse(have);
+    let n = parse(need);
+    for i in 0..n.len().max(h.len()) {
+        let a = h.get(i).copied().unwrap_or(0);
+        let b = n.get(i).copied().unwrap_or(0);
+        if a != b {
+            return a > b;
+        }
+    }
+    true // equal
 }
 
 fn fail(msg: &str) -> ! {
