@@ -221,13 +221,31 @@ fn check_health(client: &reqwest::blocking::Client, base_url: &str) -> Result<()
     {
         Ok(resp) if resp.status().is_success() => Ok(()),
         Ok(resp) => Err(format!(
-            "ominix-api returned HTTP {} — is it running on {base_url}?",
+            "ominix-api returned HTTP {} at {base_url}. Check server logs.",
             resp.status()
         )),
-        Err(e) => Err(format!(
-            "Cannot reach ominix-api at {base_url}: {e}. \
-             Start it with: ominix-api --port 8080"
-        )),
+        Err(_) => {
+            // Check if the binary is installed at all
+            let installed = std::process::Command::new("which")
+                .arg("ominix-api")
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false);
+
+            if !installed {
+                Err(
+                    "ominix-api is not installed. Install it:\n\
+                     cargo install --git https://github.com/OminiX-ai/OminiX-MLX ominix-api --features tts\n\
+                     Then start: ominix-api --tts-port 8082 --clone-port 8083"
+                        .to_string(),
+                )
+            } else {
+                Err(format!(
+                    "ominix-api is installed but not running at {base_url}.\n\
+                     Start it: ominix-api --tts-port 8082 --clone-port 8083"
+                ))
+            }
+        }
     }
 }
 

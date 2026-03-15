@@ -5,9 +5,23 @@
   "description": "Voice management and TTS with custom voice cloning via ominix-api",
   "timeout_secs": 300,
   "requires_network": true,
+  "requires": {
+    "bins": ["ominix-api"],
+    "os": ["darwin"]
+  },
+  "install": [
+    {
+      "id": "ominix-api",
+      "kind": "cargo",
+      "crate": "ominix-api",
+      "bins": ["ominix-api"],
+      "label": "OminiX API server (Apple Silicon TTS inference)",
+      "os": ["darwin"]
+    }
+  ],
   "dependencies": {
     "ominix-api": {
-      "repo": "https://github.com/OminiX-MLX/OminiX-MLX",
+      "repo": "https://github.com/OminiX-ai/OminiX-MLX",
       "crate": "ominix-api",
       "features": ["tts"],
       "description": "Local inference server for Qwen3 TTS with voice cloning on Apple Silicon"
