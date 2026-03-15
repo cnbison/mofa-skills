@@ -8,6 +8,13 @@ tags = ["video", "animation", "Chinese"]
 [variants]
 default = "shuimo"
 
+# "front" is the pipeline default when no card.style is specified.
+# Maps to shuimo so the image generation prefix is consistent with the animation style.
+[variants.front]
+prompt = """
+Chinese ink wash painting style. Traditional ink and brush aesthetic, elegant and serene composition. Subtle textures suggesting aged rice paper. Harmonious tones of black, gray, and natural earth colors with selective accent hues. Timeless, contemplative mood.
+"""
+
 [variants.shuimo]
 prompt = """
 Gentle animation of a Chinese ink wash painting. Subtle natural movements: leaves swaying gently in the breeze, steam rising slowly from tea cups, clouds drifting lazily across the sky, water rippling softly. Keep the ink wash painting style throughout — do NOT change the art style. Slow, peaceful, meditative motion. Camera stays still.

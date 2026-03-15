@@ -1,0 +1,49 @@
+[meta]
+name = "product-reel"
+display_name = "Product Reel"
+description = "Product showcase video style for marketing and e-commerce. Studio-quality product photography aesthetic with dramatic lighting, designed to highlight form and detail."
+category = "product"
+tags = ["video", "product", "marketing", "ecommerce", "showcase"]
+
+[variants]
+default = "tech"
+
+[variants.tech]
+prompt = """
+Product photography on a deep charcoal or matte black background. Subtle neon rim lighting — cool blue or cyan edge glow outlining the product. Product centered and floating with a soft reflection below. Clean, minimal, high-tech aesthetic. Sleek and precise. No clutter. Studio strobe quality. 16:9 or 9:16 depending on orientation.
+"""
+
+[variants.lifestyle]
+prompt = """
+Lifestyle product photography. Warm, natural ambient lighting — soft window light from the left. Product placed in a real-world context: on a wooden table, linen surface, or natural setting. Shallow depth of field, soft warm bokeh in background. Earthy tones: cream, sand, sage, warm white. Editorial magazine quality. Approachable and aspirational. 16:9 or 9:16 depending on orientation.
+"""
+
+[variants.luxury]
+prompt = """
+Luxury product photography. Matte black background with dramatic single-point hard lighting creating strong highlight and shadow on the product surface. Gold or champagne accent elements — thin metallic lines, fine dust particles. Deep contrast, high drama. No soft diffusion — crisp, precise shadows. Premium brand aesthetic: Chanel, Rolex, Louis Vuitton feel. 16:9 or 9:16 depending on orientation.
+"""
+
+# Veo animation prompts — used when anim_style=product-reel
+# These describe MOTION, not appearance. Keep art style unchanged.
+
+[variants.anim_tech]
+prompt = """
+Subtle product reveal animation. Neon rim glow pulsing softly (1-2 second cycle), faint lens flare sweeping across the product surface once, reflection rippling gently below. Clean, high-tech motion. Camera stays still. Keep the original design style throughout.
+"""
+
+[variants.anim_lifestyle]
+prompt = """
+Natural, organic animation. Warm light shifting softly as if clouds moving outside a window, bokeh circles in background drifting slowly, dust motes catching the light. Relaxed, breathing pace. Camera stays still. Keep the original design style throughout.
+"""
+
+[variants.anim_luxury]
+prompt = """
+Dramatic, precise animation. Single hard light beam sweeping slowly across the product surface, revealing texture and form. Deep shadow region darkening slightly then recovering. Gold particle shimmer settling on the surface. Slow, deliberate. Camera stays still. Keep the original design style throughout.
+"""
+
+[compositing]
+still_duration = 2.5
+crossfade_dur = 1.2
+fade_out_dur = 1.5
+music_volume = 0.2
+music_fade_in = 2.0
