@@ -12,16 +12,16 @@ CLI: `mofa slides` | Styles: `mofa-slides/styles/*.toml` | Config: `mofa/config.
 
 ## Output Paths
 
-**IMPORTANT**: Always use a unique per-request subdirectory to avoid conflicts between users:
+**IMPORTANT**: Always use relative paths under `skill-output/` with a unique per-request subdirectory:
 
 ```
-/tmp/mofa-slides-<YYYYMMDD-HHMMSS>/slides.pptx
-/tmp/mofa-slides-<YYYYMMDD-HHMMSS>/slide-dir/
+skill-output/mofa-slides-<YYYYMMDD-HHMMSS>/slides.pptx
+skill-output/mofa-slides-<YYYYMMDD-HHMMSS>/slide-dir/
 ```
 
-Example: `"out": "/tmp/mofa-slides-20260308-143022/deck.pptx"`, `"slide_dir": "/tmp/mofa-slides-20260308-143022/imgs"`
+Example: `"out": "skill-output/mofa-slides-20260308-143022/deck.pptx"`, `"slide_dir": "skill-output/mofa-slides-20260308-143022/imgs"`
 
-Never reuse paths like `/tmp/slides.pptx` — each request MUST get its own directory.
+**Never use absolute paths like `/tmp/slides.pptx`** — they are outside the sandbox and `send_file` will reject them. Always use relative paths which resolve within the profile's data directory.
 
 ## Interaction Guide
 
@@ -245,12 +245,12 @@ Use `runs` instead of `text` when you need mixed formatting (e.g. bold title + n
 
 ```json
 [
-  { "prompt": "page 1", "source_image": "/tmp/pdf-pages/page-01.png", "auto_layout": true },
-  { "prompt": "page 2", "source_image": "/tmp/pdf-pages/page-02.png", "auto_layout": true }
+  { "prompt": "page 1", "source_image": "skill-output/pdf-pages/page-01.png", "auto_layout": true },
+  { "prompt": "page 2", "source_image": "skill-output/pdf-pages/page-02.png", "auto_layout": true }
 ]
 ```
 ```bash
-mofa slides --auto-layout --style nb-pro --out editable.pptx --slide-dir /tmp/edit -i pages.json
+mofa slides --auto-layout --style nb-pro --out skill-output/editable.pptx --slide-dir skill-output/edit -i pages.json
 ```
 
 ### Reference images for visual consistency
