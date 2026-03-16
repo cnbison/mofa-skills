@@ -65,8 +65,6 @@ fn run_slides_sync(
 
     pool.scope(|s| {
         for (idx, slide) in slides.iter().enumerate() {
-            let gemini = gemini;
-            let ocr_client = ocr_client;
             let ref_paths = Arc::clone(&ref_paths);
             let extracted_texts = Arc::clone(&extracted_texts);
             let direct_paths = Arc::clone(&direct_paths);
