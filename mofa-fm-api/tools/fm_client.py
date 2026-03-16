@@ -114,6 +114,20 @@ class MoFAFMClient:
             "content_type": content_type
         }, auth=True)
 
+    def update_show(self, slug: str, title: str = None, description: str = None, **kwargs) -> Dict:
+        """更新节目"""
+        data = {}
+        if title is not None:
+            data["title"] = title
+        if description is not None:
+            data["description"] = description
+        data.update(kwargs)
+        return self._put(f"/podcasts/shows/{slug}/update/", data, auth=True)
+
+    def delete_show(self, slug: str) -> Dict:
+        """删除节目"""
+        return self._delete(f"/podcasts/shows/{slug}/delete/", auth=True)
+
     # ========== 单集 ==========
 
     def list_episodes(self, page: int = 1) -> Dict:
@@ -123,6 +137,102 @@ class MoFAFMClient:
     def get_episode(self, episode_id: int) -> Dict:
         """获取单集详情"""
         return self._get(f"/podcasts/episodes/{episode_id}/", auth=True)
+
+    def create_episode(self, show_id: int, title: str, audio_file_path: str = None, **kwargs) -> Dict:
+        """
+        创建播客单集（支持上传音频文件）
+
+        Args:
+            show_id: 节目ID
+            title: 单集标题
+            audio_file_path: 音频文件路径（可选）
+            description: 描述（可选）
+            **kwargs: 其他字段如 description, episode_number 等
+
+        Returns:
+            创建的单集详情
+        """
+        url = urljoin(self.BASE_URL + "/", "podcasts/episodes/create/")
+        headers = {"Authorization": f"Bearer {self.access_token}"} if self.access_token else {}
+
+        data = {'show_id': show_id, 'title': title, **kwargs}
+
+        if audio_file_path:
+            with open(audio_file_path, 'rb') as f:
+                files = {'audio_file': (os.path.basename(audio_file_path), f)}
+                resp = self.session.post(url, headers=headers, data=data, files=files)
+        else:
+            resp = self.session.post(url, headers=headers, json=data)
+        resp.raise_for_status()
+        return resp.json()
+
+    def update_episode(self, episode_id: int, **kwargs) -> Dict:
+        """
+        更新单集信息
+
+        Args:
+            episode_id: 单集ID
+            **kwargs: 要更新的字段如 title, description, audio_file 等
+        """
+        return self._put(f"/podcasts/episodes/{episode_id}/update/", kwargs, auth=True)
+
+    def delete_episode(self, episode_id: int) -> Dict:
+        """删除单集"""
+        return self._delete(f"/podcasts/episodes/{episode_id}/delete/", auth=True)
+
+    def increment_play_count(self, episode_id: int) -> Dict:
+        """增加单集播放计数"""
+        return self._post(f"/podcasts/episodes/{episode_id}/play/", {})
+
+    def generate_episode(self, title: str, content: str = "", source_url: str = "", show_slug: str = "",
+                         style: str = "conversational", duration: int = 10) -> Dict:
+        """
+        AI 生成播客单集
+
+        Args:
+            title: 单集标题/主题
+            content: 内容文本（可选）
+            source_url: 参考来源URL（可选）
+            show_slug: 目标节目slug（可选）
+            style: 风格 (conversational/news/professional)
+            duration: 目标时长（分钟）
+
+        Returns:
+            生成任务信息
+        """
+        return self._post("/podcasts/episodes/generate/", {
+            "title": title,
+            "content": content,
+            "source_url": source_url,
+            "show_slug": show_slug,
+            "generation_config": {
+                "style": style,
+                "duration": duration
+            }
+        }, auth=True)
+
+    def generate_episode_from_source(self, title: str, source_url: str, show_slug: str,
+                                     description: str = "", content_type: str = "podcast") -> Dict:
+        """
+        从热搜源生成播客单集
+
+        Args:
+            title: 单集标题
+            source_url: 热搜源URL
+            show_slug: 目标节目slug
+            description: 描述
+            content_type: 内容类型
+
+        Returns:
+            生成任务信息
+        """
+        return self._post("/podcasts/episodes/generate-from-source/", {
+            "title": title,
+            "description": description,
+            "source_url": source_url,
+            "show_slug": show_slug,
+            "content_type": content_type
+        }, auth=True)
 
     # ========== 热搜 ==========
 
@@ -168,6 +278,37 @@ class MoFAFMClient:
             "episode": episode_id,
             "text": text
         }, auth=True)
+
+    def like_episode(self, episode_id: int) -> Dict:
+        """点赞/取消点赞单集"""
+        return self._post(f"/interactions/episodes/{episode_id}/like/", {}, auth=True)
+
+    def follow_show(self, show_id: int) -> Dict:
+        """关注/取消关注节目"""
+        return self._post(f"/interactions/shows/{show_id}/follow/", {}, auth=True)
+
+    # ========== 分类和标签 ==========
+
+    def list_categories(self) -> List[Dict]:
+        """获取分类列表"""
+        result = self._get("/podcasts/categories/")
+        return result if isinstance(result, list) else result.get("results", [])
+
+    def list_tags(self) -> List[Dict]:
+        """获取标签列表"""
+        result = self._get("/podcasts/tags/")
+        return result if isinstance(result, list) else result.get("results", [])
+
+    # ========== 统计和推荐 ==========
+
+    def get_stats(self) -> Dict:
+        """获取平台统计信息"""
+        return self._get("/podcasts/stats/")
+
+    def recommended_episodes(self) -> List[Dict]:
+        """获取推荐单集"""
+        result = self._get("/podcasts/recommendations/episodes/")
+        return result if isinstance(result, list) else result.get("results", [])
 
     # ========== 创作者 ==========
 
@@ -306,7 +447,10 @@ def main():
         "trending", "search", "search-suggestions", "popular-searches",
         "comments", "create-comment", "my-shows", "generation-queue",
         "update-script", "script-sessions", "create-script-session",
-        "chat-script-session", "upload-script-file"
+        "chat-script-session", "upload-script-file",
+        "create-episode", "update-episode", "delete-episode", "play",
+        "create-show", "update-show", "delete-show",
+        "like", "follow", "categories", "tags", "stats", "recommended"
     ])
     parser.add_argument("--username", "-u")
     parser.add_argument("--password", "-p")
@@ -324,6 +468,16 @@ def main():
     parser.add_argument("--session-desc", help="脚本会话描述")
     parser.add_argument("--file-path", help="要上传的文件路径")
     parser.add_argument("--content-type", default="podcast", help="内容类型 (podcast/debate/conference)")
+
+    # 节目/单集相关参数
+    parser.add_argument("--show-id", type=int, help="节目 ID")
+    parser.add_argument("--show-title", help="节目标题")
+    parser.add_argument("--show-desc", help="节目描述")
+    parser.add_argument("--audio-file", help="音频文件路径")
+    parser.add_argument("--episode-title", help="单集标题")
+    parser.add_argument("--episode-desc", help="单集描述")
+    parser.add_argument("--generation-style", default="conversational", help="AI生成风格")
+    parser.add_argument("--duration", type=int, default=10, help="目标时长（分钟）")
 
     args = parser.parse_args()
 
@@ -400,6 +554,91 @@ def main():
                 result = {"error": f"文件不存在: {args.file_path}"}
             else:
                 result = client.upload_script_reference(args.session_id, args.file_path, args.text or "")
+
+        # 节目管理
+        elif args.action == "create-show":
+            if not args.show_title:
+                result = {"error": "需要 --show-title 参数"}
+            else:
+                result = client.create_show(args.show_title, args.show_desc or "", args.content_type)
+
+        elif args.action == "update-show":
+            if not args.show_slug:
+                result = {"error": "需要 --show-slug 参数"}
+            else:
+                data = {}
+                if args.show_title:
+                    data["title"] = args.show_title
+                if args.show_desc:
+                    data["description"] = args.show_desc
+                result = client.update_show(args.show_slug, **data)
+
+        elif args.action == "delete-show":
+            if not args.show_slug:
+                result = {"error": "需要 --show-slug 参数"}
+            else:
+                result = client.delete_show(args.show_slug)
+
+        # 单集管理
+        elif args.action == "create-episode":
+            if not args.show_id or not args.episode_title:
+                result = {"error": "需要 --show-id 和 --episode-title 参数"}
+            else:
+                result = client.create_episode(
+                    args.show_id,
+                    args.episode_title,
+                    args.audio_file,
+                    description=args.episode_desc or ""
+                )
+
+        elif args.action == "update-episode":
+            if not args.episode_id:
+                result = {"error": "需要 --episode-id 参数"}
+            else:
+                data = {}
+                if args.episode_title:
+                    data["title"] = args.episode_title
+                if args.episode_desc:
+                    data["description"] = args.episode_desc
+                result = client.update_episode(args.episode_id, **data)
+
+        elif args.action == "delete-episode":
+            if not args.episode_id:
+                result = {"error": "需要 --episode-id 参数"}
+            else:
+                result = client.delete_episode(args.episode_id)
+
+        elif args.action == "play":
+            if not args.episode_id:
+                result = {"error": "需要 --episode-id 参数"}
+            else:
+                result = client.increment_play_count(args.episode_id)
+
+        # 互动
+        elif args.action == "like":
+            if not args.episode_id:
+                result = {"error": "需要 --episode-id 参数"}
+            else:
+                result = client.like_episode(args.episode_id)
+
+        elif args.action == "follow":
+            if not args.show_id:
+                result = {"error": "需要 --show-id 参数"}
+            else:
+                result = client.follow_show(args.show_id)
+
+        # 分类/标签/统计
+        elif args.action == "categories":
+            result = client.list_categories()
+
+        elif args.action == "tags":
+            result = client.list_tags()
+
+        elif args.action == "stats":
+            result = client.get_stats()
+
+        elif args.action == "recommended":
+            result = client.recommended_episodes()
 
         else:
             result = {"error": "Unknown action"}
