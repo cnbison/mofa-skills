@@ -1,0 +1,27 @@
+{
+  "name": "mofa-agent-memory-deck",
+  "version": "1.0.0",
+  "type": "slides",
+  "author": "MoFA Contributor",
+  "description": "Synthesizes raw agent memory traces into an engaging, auditable PowerPoint presentation.",
+  "tools": [
+    {
+      "name": "memory_deck_generator",
+      "description": "Generate a visual PowerPoint slide presentation summarizing an agent's internal memory trace and reasoning path.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "memory_data": {
+            "type": "string",
+            "description": "Raw JSON episodic memory log describing the agent's thoughts, observations, and decisions."
+          }
+        },
+        "required": ["memory_data"]
+      }
+    }
+  ],
+  "execution": {
+    "entrypoint": "engine_or_cli_command",
+    "timeout_secs": 600
+  }
+}
