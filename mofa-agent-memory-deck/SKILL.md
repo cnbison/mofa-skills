@@ -19,13 +19,19 @@ Activate this skill when user says:
 ## Usage (CLI Examples)
 
 ```bash
-# Generate a comprehensive presentation deck from an agent memory trace
-mofa slides --style memory-review --input agent_memory_trace.json --out memory_audit.pptx
+# Generate a comprehensive presentation deck from a pre-processed slides JSON
+mofa slides \
+  --slide-dir ./mofa-slides \
+  --style memory-review \
+  --input agent_memory_slides.json \
+  --out memory_audit.pptx
 ```
 
 ## Examples
 
 The skill expects a raw JSON payload describing the agent's memory execution trace over a specific session. You can find a sample payload in `examples/mock_agent_trace.json`:
+
+This skill conceptually starts from a raw JSON payload describing the agent's memory execution trace over a specific session. You can find a sample trace payload in `examples/mock_agent_trace.json`:
 
 ```text
 {
@@ -38,7 +44,16 @@ The skill expects a raw JSON payload describing the agent's memory execution tra
 }
 ```
 
-This JSON payload is passed directly to the Gemini engine as input data. The chosen style template acts as a prefix instructing the model on how to organize the slides (e.g., Executive Summary, Key Decisions, Future Context) before passing the results to the standard `mofa slides` backend `pptxgenjs`/Rust generator.
+In practice, this trace-shaped JSON is first transformed (by separate tooling or an upstream skill) into a slides input of the form:
+
+```json
+[
+  { "prompt": "Summarize the overall task and agent objective for the deck intro slide." },
+  { "prompt": "Explain the key observations the agent made about Raft networks." }
+]
+```
+
+This slides JSON (for example, `agent_memory_slides.json`) is what you pass to the `mofa slides` CLI via `--input`. The `memory-review` style must be available under the `mofa-slides/styles/` directory (for example, `mofa-slides/styles/memory-review.toml`) so that `--style memory-review` can be resolved. The style template acts as a prefix instructing the model on how to organize the slides (e.g., Executive Summary, Key Decisions, Future Context) before passing the results to the standard `mofa slides` backend `pptxgenjs`/Rust generator.
 
 ## Features
 
