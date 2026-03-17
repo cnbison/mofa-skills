@@ -73,12 +73,10 @@ async fn handle_eval(input_json: &str) {
     };
 
     let api_key = require_api_key();
-    let config = load_rubric(&input.rubric);
+    let config = load_rubric(&input.rubric).unwrap_or_else(|e| fail(&e));
+    let result = evaluate(&config, &input.expected, &input.actual, &api_key).await
+        .unwrap_or_else(|e| fail(&e));
 
-    // Call OpenAI Judge
-    let result = evaluate(&config, &input.expected, &input.actual, &api_key).await;
-
-    // Save to SQLite
     let conn = db::open_db().unwrap_or_else(|e| fail(&e));
     let id = uuid::Uuid::new_v4().to_string();
     let created_at = chrono::Utc::now().to_rfc3339();
@@ -119,12 +117,18 @@ async fn handle_batch_eval(input_json: &str) {
     let api_key = require_api_key();
     let conn = db::open_db().unwrap_or_else(|e| fail(&e));
 
-    let mut success_count = 0;
-    let mut total_score = 0;
+    let mut success_count: usize = 0;
+    let mut total_score: f64 = 0.0;
 
     for case in &cases {
-        let config = load_rubric(&case.rubric);
-        let result = evaluate(&config, &case.expected, &case.actual, &api_key).await;
+        let config = load_rubric(&case.rubric).unwrap_or_else(|e| fail(&e));
+        let result = match evaluate(&config, &case.expected, &case.actual, &api_key).await {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("Skipping test case due to evaluation error: {}", e);
+                continue;
+            }
+        };
 
         let row = db::EvalRow {
             id: uuid::Uuid::new_v4().to_string(),
@@ -139,14 +143,19 @@ async fn handle_batch_eval(input_json: &str) {
 
         if db::insert_eval(&conn, &row).is_ok() {
             success_count += 1;
-            total_score += result.score;
+            total_score += result.score as f64;
         }
     }
 
-    let avg_score = if success_count > 0 { total_score / success_count } else { 0 };
+    // Use f64 to avoid integer truncation on the average
+    let avg_score = if success_count > 0 {
+        total_score / success_count as f64
+    } else {
+        0.0
+    };
 
     succeed(&format!(
-        "Batch complete. Evaluated {}/{} tests for run '{}'. Average Score: {}",
+        "Batch complete. Evaluated {}/{} tests for run '{}'. Average Score: {:.2}",
         success_count, cases.len(), input.run_id, avg_score
     ));
 }
@@ -165,7 +174,7 @@ async fn handle_score_summary(input_json: &str) {
     }
 
     let avg = db::get_run_average(&conn, &input.run_id)
-        .unwrap_or_default()
+        .unwrap_or_else(|e| fail(&e))
         .unwrap_or(0.0);
 
     let mut report = format!("Report for Run: {}\n", input.run_id);
@@ -176,7 +185,7 @@ async fn handle_score_summary(input_json: &str) {
         report.push_str(&format!("Test {}\n  Score: {}\n  Reasoning: {}\n", i + 1, eval.score, eval.reasoning));
     }
 
-    succeed(&report.trim_end());
+    succeed(report.trim_end());
 }
 
 async fn handle_compare(input_json: &str) {
@@ -192,13 +201,20 @@ async fn handle_compare(input_json: &str) {
         fail(&format!("Baseline run_a '{}' not found", input.run_a));
     }
 
-    let avg_a = db::get_run_average(&conn, &input.run_a).unwrap_or_default().unwrap_or(0.0);
-    let avg_b = db::get_run_average(&conn, &input.run_b).unwrap_or_default().unwrap_or(0.0);
-
-    let diff = avg_b - avg_a;
+    // Propagate DB errors loudly — unwrap_or_default() would silently report 0.0
+    let avg_a = db::get_run_average(&conn, &input.run_a)
+        .unwrap_or_else(|e| fail(&e))
+        .unwrap_or(0.0);
+    let avg_b = db::get_run_average(&conn, &input.run_b)
+        .unwrap_or_else(|e| fail(&e))
+        .unwrap_or(0.0);
 
     let eval_count_a = evals_a.len();
-    let eval_count_b = db::get_run(&conn, &input.run_b).unwrap_or_default().len();
+    let eval_count_b = db::get_run(&conn, &input.run_b)
+        .unwrap_or_else(|e| fail(&e))
+        .len();
+
+    let diff = avg_b - avg_a;
 
     let output = format!(
         "Comparison: '{}' vs '{}'\n\

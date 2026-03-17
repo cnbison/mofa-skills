@@ -23,29 +23,50 @@ pub struct EvalResult {
     pub reasoning: String,
 }
 
-pub fn load_rubric(name: &str) -> EvalConfig {
+fn default_rubric_config() -> EvalConfig {
+    EvalConfig {
+        rubric: RubricInner {
+            name: "fallback".to_string(),
+            description: "Fallback default evaluation".to_string(),
+            criteria: "Compare ACTUAL to EXPECTED. Score 0-100 based on accuracy. Return JSON: {\"score\": 100, \"reasoning\": \"ok\"}".to_string(),
+        }
+    }
+}
+
+/// Load a rubric by name from the `styles/` directory adjacent to the binary's CWD.
+///
+/// # Security
+/// `name` is restricted to `[A-Za-z0-9_-]+` to prevent directory traversal.
+/// Invalid names fall back to the built-in default rubric.
+///
+/// # Errors
+/// Returns `Err(String)` if the file exists but cannot be read or parsed.
+pub fn load_rubric(name: &str) -> Result<EvalConfig, String> {
+    // Guard: only allow safe characters to prevent path traversal (e.g. ../../secrets)
+    if !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') {
+        return Ok(default_rubric_config());
+    }
+
     let mut path = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
     path.push("styles");
     path.push(format!("{}.toml", name));
 
     if !path.exists() {
-        // Fallback to default if not found
-        return EvalConfig {
-            rubric: RubricInner {
-                name: "fallback".to_string(),
-                description: "Fallback default evaluation".to_string(),
-                criteria: "Compare ACTUAL to EXPECTED. Score 0-100 based on accuracy. Return JSON: {\"score\": 100, \"reasoning\": \"ok\"}".to_string(),
-            }
-        };
+        return Ok(default_rubric_config());
     }
 
     let contents = std::fs::read_to_string(&path)
-        .unwrap_or_else(|_| panic!("Failed to read rubric file at {}", path.display()));
-    
-    toml::from_str(&contents).unwrap_or_else(|e| panic!("Failed to parse TOML in {}: {}", path.display(), e))
+        .map_err(|e| format!("Failed to read rubric file at {}: {}", path.display(), e))?;
+
+    toml::from_str(&contents)
+        .map_err(|e| format!("Failed to parse TOML in {}: {}", path.display(), e))
 }
 
-pub async fn evaluate(config: &EvalConfig, expected: &str, actual: &str, api_key: &str) -> EvalResult {
+/// Call OpenAI GPT-4o-mini to score `actual` against `expected` using the provided rubric.
+///
+/// # Errors
+/// Returns `Err(String)` on network/API failures so callers can emit a structured JSON error.
+pub async fn evaluate(config: &EvalConfig, expected: &str, actual: &str, api_key: &str) -> Result<EvalResult, String> {
     let client = Client::with_config(async_openai::config::OpenAIConfig::new().with_api_key(api_key));
 
     let system_prompt = format!(
@@ -60,7 +81,7 @@ pub async fn evaluate(config: &EvalConfig, expected: &str, actual: &str, api_key
 
     let request = CreateChatCompletionRequestArgs::default()
         .max_tokens(1024_u16)
-        .model("gpt-4o-mini") // We can use 4o-mini for cheap, fast evals
+        .model("gpt-4o-mini")
         .response_format(ResponseFormat::JsonObject)
         .messages([
             ChatCompletionRequestSystemMessageArgs::default()
@@ -77,8 +98,9 @@ pub async fn evaluate(config: &EvalConfig, expected: &str, actual: &str, api_key
         .build()
         .unwrap();
 
-    let response = client.chat().create(request).await.expect("OpenAI request failed");
-    
+    let response = client.chat().create(request).await
+        .map_err(|e| format!("OpenAI API request failed: {}", e))?;
+
     let content = response
         .choices
         .first()
@@ -90,8 +112,8 @@ pub async fn evaluate(config: &EvalConfig, expected: &str, actual: &str, api_key
         reasoning: format!("Failed to parse LLM valid JSON. Raw output: {}", content),
     });
 
-    // Clamp score
+    // Clamp score to valid range
     result.score = result.score.clamp(0, 100);
 
-    result
+    Ok(result)
 }
