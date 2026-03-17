@@ -12,16 +12,16 @@ CLI: `mofa slides` | Styles: `mofa-slides/styles/*.toml` | Config: `mofa/config.
 
 ## Output Paths
 
-**IMPORTANT**: Always use a unique per-request subdirectory to avoid conflicts between users:
+**IMPORTANT**: Always use relative paths under `skill-output/` with a unique per-request subdirectory:
 
 ```
-/tmp/mofa-slides-<YYYYMMDD-HHMMSS>/slides.pptx
-/tmp/mofa-slides-<YYYYMMDD-HHMMSS>/slide-dir/
+skill-output/mofa-slides-<YYYYMMDD-HHMMSS>/slides.pptx
+skill-output/mofa-slides-<YYYYMMDD-HHMMSS>/slide-dir/
 ```
 
-Example: `"out": "/tmp/mofa-slides-20260308-143022/deck.pptx"`, `"slide_dir": "/tmp/mofa-slides-20260308-143022/imgs"`
+Example: `"out": "skill-output/mofa-slides-20260308-143022/deck.pptx"`, `"slide_dir": "skill-output/mofa-slides-20260308-143022/imgs"`
 
-Never reuse paths like `/tmp/slides.pptx` — each request MUST get its own directory.
+**Never use absolute paths like `/tmp/slides.pptx`** — they are outside the sandbox and `send_file` will reject them. Always use relative paths which resolve within the profile's data directory.
 
 ## Interaction Guide
 
@@ -55,20 +55,20 @@ User's button press arrives as `[callback] style:nb-pro`.
 **Image mode** (default) — text baked into AI image. Beautiful, but not editable in PowerPoint.
 - User says: "做PPT", "make slides"
 - `prompt` describes everything (background + text content)
+- Models: `gemini-3.1-flash-image-preview` (image generation)
 
-**Editable mode** — AI generates background, you place editable text boxes on top.
+**Editable mode** (`--auto-layout`) — text is editable in PowerPoint.
 - User says: "可编辑PPT", "editable slides"
-- `prompt` describes **background only** (end with "no text anywhere")
-- `texts` array has all text boxes with position, font, size, color
-- Do **NOT** use `--auto-layout`. Just use the `texts` field — the tool handles the rest.
+- Add `--auto-layout` flag
+- Requires both `GEMINI_API_KEY` and `DASHSCOPE_API_KEY`
 
-Slide canvas: **13.333" wide × 7.5" tall**. Common positions:
-- Title centered: `x: 0.5, y: 2.5, w: 12.333, h: 1.5, align: "c"`
-- Subtitle: `x: 0.5, y: 4.2, w: 12.333, h: 1.0, align: "c"`
-- Body left: `x: 1.0, y: 2.0, w: 5.5, h: 4.0`
-- Footer: `x: 0.5, y: 6.5, w: 12.333, h: 0.5, fontSize: 12`
+Editable mode pipeline (4 phases):
+1. **Generate**: `gemini-3.1-flash-image-preview` generates full slide image with text baked in (same as image mode)
+2. **Extract**: `gemini-2.5-flash` (VQA) reads the image and extracts every text element — content, position, font size, color, weight, alignment. Returns structured JSON with percentage-based coordinates.
+3. **Remove text**: `qwen-image-edit-max` (via Dashscope API) takes the reference image and removes all text, producing a clean background. This is the step that requires `DASHSCOPE_API_KEY`.
+4. **Assemble**: PPTX built with clean background image + editable text boxes from step 2 placed on top.
 
-> `--auto-layout` exists for **PDF-to-PPTX conversion only** (uses OCR + Qwen-Edit to remove baked text from existing images). Do not use it for new slides — it degrades backgrounds.
+Also works for PDF-to-PPTX: provide `source_image` + `auto_layout: true` per slide (skips step 1, uses existing image).
 
 ## Styles (17)
 
@@ -122,21 +122,27 @@ Each slide takes ~15-30 seconds to generate. Total time depends on slide count a
 - **Increase concurrency**: `"concurrency": 5` or higher (default: 5)
 - **Use smaller images**: `"1K"` or `"2K"` instead of `"4K"`
 - **Don't use `--api batch`** in crew.rs tool calls — batch can take 5-30 min
-- **Avoid `--auto-layout`** unless needed — it adds VQA + Qwen-Edit passes per slide
+- **`--auto-layout` adds ~10-20s per slide** for VQA extraction + Qwen-Edit text removal
 
 If a generation times out, **cached slides are preserved** — rerun and only missing slides will be regenerated.
 
-## Resolution & Quality
+## Models
+
+| Role | Default model | Flag / config key | API key |
+|------|---------------|-------------------|---------|
+| Image generation | `gemini-3.1-flash-image-preview` | `--gen-model` | `GEMINI_API_KEY` |
+| Text extraction (VQA) | `gemini-2.5-flash` | `--vision-model` | `GEMINI_API_KEY` |
+| Text removal (inpainting) | `qwen-image-edit-max-2026-01-16` | `edit_model` in config | `DASHSCOPE_API_KEY` |
+
+Per-slide generation model override: `"gen_model": "model-name"` in JSON.
+
+## Resolution
 
 | Flag | Values | Description |
 |------|--------|-------------|
 | `--image-size` | `1K`, `2K`, `4K` | Image resolution. Higher = sharper but slower. |
-| `--gen-model` | model name | Generation model (default: `gemini-3.1-flash-image-preview`) |
-| `--ref-image-size` | `1K`, `2K` | Lower-res for autoLayout reference image (faster Phase 1) |
-| `--vision-model` | model name | Text extraction model (default: `gemini-2.5-flash`) |
+| `--ref-image-size` | `1K`, `2K` | Lower-res for auto-layout reference image (faster generation, VQA still accurate) |
 | `--concurrency` | 1-20 | Parallel slide generation (default: 5) |
-
-Per-slide model override: `"gen_model": "model-name"` in JSON.
 
 ## Input JSON Schema
 
@@ -156,7 +162,7 @@ Top-level: array of slide objects.
 
 ### TextOverlay (manual text boxes)
 
-When `texts` is provided, these text boxes are placed on top of the slide image. In image mode, AI generates a text-free background; in auto-layout mode, extracted text is used instead.
+When `texts` is provided, these text boxes are placed on top of the slide image. AI generates a text-free background automatically. In auto-layout mode, VQA-extracted text is used instead.
 
 Slide canvas: **13.333" wide x 7.5" tall** (16:9 widescreen). All positions in inches.
 
@@ -202,58 +208,46 @@ Use `runs` instead of `text` when you need mixed formatting (e.g. bold title + n
 ]
 ```
 
-### Editable mode (use `texts`)
+### Editable mode (`--auto-layout`)
+
+Same JSON as image mode — just add `--auto-layout` flag. The tool generates the image, uses Gemini VQA to extract text, then qwen-image-edit to remove text from the image, and assembles editable PPTX automatically.
+
+```bash
+mofa slides --auto-layout --style nb-pro --out skill-output/editable.pptx --slide-dir skill-output/edit -i slides.json
+```
 
 ```json
 [
-  {
-    "prompt": "Dramatic dark gradient, radial light burst, constellation pattern, deep navy to black, no text anywhere",
-    "style": "cover",
-    "texts": [
-      { "text": "2026 战略规划", "x": 0.5, "y": 2.5, "w": 12.333, "h": 1.5, "fontSize": 48, "bold": true, "color": "FFFFFF", "align": "c" },
-      { "text": "数字化转型与增长路径", "x": 0.5, "y": 4.2, "w": 12.333, "h": 1.0, "fontSize": 24, "color": "AAAAAA", "align": "c" }
-    ]
-  },
-  {
-    "prompt": "Clean professional background, subtle left sidebar in dark navy, soft gradient, no text",
-    "style": "normal",
-    "texts": [
-      { "text": "核心发现", "x": 1.0, "y": 0.5, "w": 11.0, "h": 1.0, "fontSize": 32, "bold": true, "color": "1A1A2E" },
-      { "text": "Revenue +47%\nUsers 10M\nNPS 72", "x": 1.0, "y": 2.0, "w": 5.5, "h": 4.0, "fontSize": 20, "color": "333333" }
-    ]
-  }
+  { "prompt": "TITLE: \"AI战略报告\"\nCentered, dramatic background", "style": "cover" },
+  { "prompt": "TITLE: \"核心发现\"\n3 metric cards: Revenue +47%, Users 10M, NPS 72", "style": "normal" }
 ]
-```
-
-### Editable with rich text (mixed formatting in one text box)
-
-Use `runs` instead of `text` when you need bold + normal or multi-color in a single box:
-
-```json
-{
-  "prompt": "Clean white background with left sidebar accent, no text",
-  "texts": [
-    {
-      "runs": [
-        { "text": "Revenue Growth", "bold": true, "fontSize": 28, "color": "2D1B4E" },
-        { "text": "  Q3 2026 Results", "fontSize": 18, "color": "888888" }
-      ],
-      "x": 1.0, "y": 0.5, "w": 11.0, "h": 1.0
-    }
-  ]
-}
 ```
 
 ### PDF-to-PPTX conversion
 
+Provide existing page images as `source_image`. The tool skips image generation, runs VQA + qwen-image-edit on the existing images.
+
 ```json
 [
-  { "prompt": "page 1", "source_image": "/tmp/pdf-pages/page-01.png", "auto_layout": true },
-  { "prompt": "page 2", "source_image": "/tmp/pdf-pages/page-02.png", "auto_layout": true }
+  { "prompt": "page 1", "source_image": "skill-output/pdf-pages/page-01.png", "auto_layout": true },
+  { "prompt": "page 2", "source_image": "skill-output/pdf-pages/page-02.png", "auto_layout": true }
 ]
 ```
 ```bash
-mofa slides --auto-layout --style nb-pro --out editable.pptx --slide-dir /tmp/edit -i pages.json
+mofa slides --auto-layout --style nb-pro --out skill-output/editable.pptx --slide-dir skill-output/edit -i pages.json
+```
+
+### Manual text overlays (`texts` field)
+
+For pixel-perfect control over text positioning. AI generates a text-free background, you specify text boxes manually. No `--auto-layout` or DASHSCOPE_API_KEY needed.
+
+```json
+{
+  "prompt": "Dark gradient background with subtle geometric patterns, no text anywhere",
+  "texts": [
+    { "text": "2026 战略规划", "x": 0.5, "y": 2.5, "w": 12.333, "h": 1.5, "fontSize": 48, "bold": true, "color": "FFFFFF", "align": "c" }
+  ]
+}
 ```
 
 ### Reference images for visual consistency
@@ -275,13 +269,12 @@ mofa slides --auto-layout --style nb-pro --out editable.pptx --slide-dir /tmp/ed
 | `-o` / `--out` | *required* | Output PPTX file path |
 | `--slide-dir` | *required* | Directory for intermediate PNGs |
 | `-i` / `--input` | stdin | Input JSON file path |
-| `--auto-layout` | false | Enable editable text mode for ALL slides |
+| `--auto-layout` | false | Enable editable mode (VQA + qwen-image-edit) for ALL slides |
 | `--concurrency` | 5 | Parallel generation (1-20) |
 | `--image-size` | config | `"1K"` / `"2K"` / `"4K"` |
 | `--gen-model` | gemini-3.1-flash-image-preview | Image generation model |
-| `--ref-image-size` | same as image-size | Lower-res for autoLayout reference (faster) |
-| `--vision-model` | gemini-2.5-flash | Vision model for text extraction |
-| `--refine` | false | Use Qwen-Edit for text removal (cleaner, needs DASHSCOPE_API_KEY) |
+| `--ref-image-size` | same as image-size | Lower-res for auto-layout reference (faster) |
+| `--vision-model` | gemini-2.5-flash | VQA model for text extraction in auto-layout |
 | `--api` | `rt` | API mode: `rt` (realtime, fast parallel) or `batch` (50% cheaper, async 5-30 min) |
 | `--root` | auto-detected | Path to mofa root directory |
 
@@ -297,10 +290,12 @@ mofa slides --auto-layout --style nb-pro --out editable.pptx --slide-dir /tmp/ed
   },
   "gen_model": "gemini-3.1-flash-image-preview",
   "vision_model": "gemini-2.5-flash",
+  "edit_model": "qwen-image-edit-max-2026-01-16",
   "defaults": {
     "slides": { "style": "nb-pro", "image_size": "2K", "concurrency": 5 }
   }
 }
 ```
 
-DASHSCOPE_API_KEY is only needed for `--auto-layout` (editable mode) and `--refine`.
+- `GEMINI_API_KEY` — required for all modes (image generation + VQA)
+- `DASHSCOPE_API_KEY` — required for `--auto-layout` (qwen-image-edit text removal)
