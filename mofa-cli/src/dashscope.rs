@@ -43,6 +43,7 @@ impl OcrWord {
 
 /// Sample the background color around a bounding box by looking at border pixels.
 /// Takes median of border pixel colors to avoid sampling text or edge artifacts.
+#[allow(dead_code)]
 fn sample_border_color(
     img: &image::RgbImage,
     x0: u32, y0: u32, x1: u32, y1: u32,
@@ -224,6 +225,7 @@ impl DashscopeClient {
 
     /// OCR an image using qwen-vl-ocr, returning word-level bounding boxes.
     /// Each result has `text` and `location` [x1,y1, x2,y2, x3,y3, x4,y4] in pixels.
+    #[allow(dead_code)]
     pub fn ocr_image(&self, image_path: &Path) -> Result<Vec<OcrWord>> {
         let img_data = std::fs::read(image_path)?;
         let b64 = base64::engine::general_purpose::STANDARD.encode(&img_data);
@@ -328,6 +330,7 @@ impl DashscopeClient {
     /// For each OCR-detected text region, samples the surrounding background color
     /// and fills the text area with it. This is deterministic, fast, and avoids
     /// AI inpainting artifacts on dense slides.
+    #[allow(dead_code)]
     pub fn remove_text(&self, image_path: &Path, out_file: &Path) -> Result<std::path::PathBuf> {
         // Step 1: OCR to find all text regions
         let words = self.ocr_image(image_path)?;
