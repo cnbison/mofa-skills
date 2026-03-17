@@ -60,13 +60,13 @@ User's button press arrives as `[callback] style:nb-pro`.
 **Editable mode** (`--auto-layout`) — text is editable in PowerPoint.
 - User says: "可编辑PPT", "editable slides"
 - Add `--auto-layout` flag
-- Requires both `GEMINI_API_KEY` and `DASHSCOPE_API_KEY`
+- Requires `GEMINI_API_KEY`. `DASHSCOPE_API_KEY` recommended for best quality text removal.
 
 Editable mode pipeline (4 phases):
-1. **Generate**: `gemini-3.1-flash-image-preview` generates full slide image with text baked in (same as image mode)
-2. **Extract**: `gemini-2.5-flash` (VQA) reads the image and extracts every text element — content, position, font size, color, weight, alignment. Returns structured JSON with percentage-based coordinates.
-3. **Remove text**: `qwen-image-edit-max` (via Dashscope API) takes the reference image and removes all text, producing a clean background. This is the step that requires `DASHSCOPE_API_KEY`.
-4. **Assemble**: PPTX built with clean background image + editable text boxes from step 2 placed on top.
+1. **Generate**: Gemini generates full slide image with text baked in (same as image mode)
+2. **Extract**: Gemini VQA reads the image and extracts every text element — content, position, font size, color, weight, alignment
+3. **Remove text**: `qwen-image-edit-max` (via Dashscope) removes all text, preserving illustrations/wireframes/charts. Falls back to Gemini image editing if DASHSCOPE_API_KEY is not set.
+4. **Assemble**: PPTX built with clean background image + editable text boxes from step 2 placed on top
 
 Also works for PDF-to-PPTX: provide `source_image` + `auto_layout: true` per slide (skips step 1, uses existing image).
 
@@ -131,8 +131,8 @@ If a generation times out, **cached slides are preserved** — rerun and only mi
 | Role | Default model | Flag / config key | API key |
 |------|---------------|-------------------|---------|
 | Image generation | `gemini-3.1-flash-image-preview` | `--gen-model` | `GEMINI_API_KEY` |
-| Text extraction (VQA) | `gemini-2.5-flash` | `--vision-model` | `GEMINI_API_KEY` |
-| Text removal (inpainting) | `qwen-image-edit-max-2026-01-16` | `edit_model` in config | `DASHSCOPE_API_KEY` |
+| Text extraction (VQA) | `gemini-3.1-flash-image-preview` | `--vision-model` | `GEMINI_API_KEY` |
+| Text removal (inpainting) | `qwen-image-edit-max` | `edit_model` in config | `DASHSCOPE_API_KEY` |
 
 Per-slide generation model override: `"gen_model": "model-name"` in JSON.
 
@@ -274,7 +274,7 @@ For pixel-perfect control over text positioning. AI generates a text-free backgr
 | `--image-size` | config | `"1K"` / `"2K"` / `"4K"` |
 | `--gen-model` | gemini-3.1-flash-image-preview | Image generation model |
 | `--ref-image-size` | same as image-size | Lower-res for auto-layout reference (faster) |
-| `--vision-model` | gemini-2.5-flash | VQA model for text extraction in auto-layout |
+| `--vision-model` | gemini-3.1-flash-image-preview | VQA model for text extraction in auto-layout |
 | `--api` | `rt` | API mode: `rt` (realtime, fast parallel) or `batch` (50% cheaper, async 5-30 min) |
 | `--root` | auto-detected | Path to mofa root directory |
 
@@ -289,8 +289,8 @@ For pixel-perfect control over text positioning. AI generates a text-free backgr
     "dashscope": "env:DASHSCOPE_API_KEY"
   },
   "gen_model": "gemini-3.1-flash-image-preview",
-  "vision_model": "gemini-2.5-flash",
-  "edit_model": "qwen-image-edit-max-2026-01-16",
+  "vision_model": "gemini-3.1-flash-image-preview",
+  "edit_model": "qwen-image-edit-max",
   "defaults": {
     "slides": { "style": "nb-pro", "image_size": "2K", "concurrency": 5 }
   }

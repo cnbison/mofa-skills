@@ -124,11 +124,11 @@ impl MofaConfig {
     }
 
     pub fn vision_model(&self) -> &str {
-        self.vision_model.as_deref().unwrap_or("gemini-2.5-flash")
+        self.vision_model.as_deref().unwrap_or("gemini-3.1-flash-image-preview")
     }
 
     pub fn edit_model(&self) -> &str {
-        self.edit_model.as_deref().unwrap_or("qwen-image-edit-max-2026-01-16")
+        self.edit_model.as_deref().unwrap_or("qwen-image-2.0-pro")
     }
 
     /// Resolve the OCR endpoint URL from config or env.

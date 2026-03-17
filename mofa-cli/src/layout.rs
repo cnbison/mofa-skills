@@ -114,6 +114,11 @@ Return ONLY a JSON array."#
                 valign: String::new(),
                 rotate: None,
                 runs: None,
+                shadow: None,
+                line_spacing: None,
+                margin: None,
+                transparency: None,
+                fill: None,
             }
         })
         .collect();
@@ -703,6 +708,11 @@ Return ONLY a JSON array."#,
             valign: String::new(),
             rotate: None,
             runs: None,
+            shadow: None,
+            line_spacing: None,
+            margin: None,
+            transparency: None,
+            fill: None,
         });
     }
 

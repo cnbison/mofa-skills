@@ -5,7 +5,7 @@ use eyre::Result;
 use serde_json::{json, Value};
 use std::path::Path;
 
-const DEFAULT_EDIT_MODEL: &str = "qwen-image-edit-max-2026-01-16";
+const DEFAULT_EDIT_MODEL: &str = "qwen-image-edit-max";
 
 /// A word/line detected by OCR with 4-corner bounding box (pixel coordinates).
 /// Corners: top-left (x1,y1), top-right (x2,y2), bottom-right (x3,y3), bottom-left (x4,y4).
@@ -180,7 +180,9 @@ impl DashscopeClient {
             },
             "parameters": {
                 "n": 1,
-                "watermark": false
+                "watermark": false,
+                "prompt_extend": false,
+                "negative_prompt": "text, words, letters, watermark"
             }
         });
 

@@ -10,6 +10,38 @@ const EMU_PER_INCH: f64 = 914_400.0;
 /// PowerPoint font size unit: 1 pt = 100 half-points
 const PT_TO_HPTS: f64 = 100.0;
 
+/// Shadow specification for text overlays.
+#[derive(Deserialize, Debug, Clone)]
+pub struct TextShadow {
+    #[serde(default = "default_shadow_blur")]
+    pub blur: f64,
+    #[serde(default = "default_shadow_offset")]
+    pub offset: f64,
+    #[serde(default = "default_shadow_angle")]
+    pub angle: f64,
+    #[serde(default = "default_shadow_opacity")]
+    pub opacity: f64,
+    #[serde(default = "default_shadow_color")]
+    pub color: String,
+}
+
+fn default_shadow_blur() -> f64 { 4.0 }
+fn default_shadow_offset() -> f64 { 2.0 }
+fn default_shadow_angle() -> f64 { 45.0 }
+fn default_shadow_opacity() -> f64 { 0.6 }
+fn default_shadow_color() -> String { "000000".into() }
+
+/// Fill specification for text box background.
+#[derive(Deserialize, Debug, Clone)]
+pub struct TextFill {
+    #[serde(default = "default_fill_color")]
+    pub color: String,
+    #[serde(default)]
+    pub transparency: f64,
+}
+
+fn default_fill_color() -> String { "000000".into() }
+
 /// Text overlay specification matching mofa-pptx `texts` API.
 #[derive(Deserialize, Debug, Clone)]
 pub struct TextOverlay {
@@ -38,6 +70,12 @@ pub struct TextOverlay {
     #[serde(default = "default_valign")]
     pub valign: String,
     pub rotate: Option<f64>,
+    pub shadow: Option<TextShadow>,
+    #[serde(rename = "lineSpacing")]
+    pub line_spacing: Option<f64>,
+    pub margin: Option<f64>,
+    pub transparency: Option<f64>,
+    pub fill: Option<TextFill>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -118,6 +156,41 @@ fn build_text_shape_xml(overlay: &TextOverlay, shape_id: u32) -> String {
         .map(|deg| format!(r#" rot="{}""#, (deg * 60000.0) as i64))
         .unwrap_or_default();
 
+    // Shadow effect on shape
+    let shadow_xml = overlay.shadow.as_ref().map(|s| {
+        let blur_emu = (s.blur * 12700.0) as i64; // pt to EMU
+        let dist_emu = (s.offset * 12700.0) as i64;
+        let angle = (s.angle * 60000.0) as i64;
+        let alpha = ((s.opacity * 100000.0) as i64).min(100000);
+        format!(
+            r#"<a:effectLst><a:outerShdw blurRad="{blur_emu}" dist="{dist_emu}" dir="{angle}" algn="bl" rotWithShape="0"><a:srgbClr val="{}"><a:alpha val="{alpha}"/></a:srgbClr></a:outerShdw></a:effectLst>"#,
+            s.color
+        )
+    }).unwrap_or_default();
+
+    // Fill for text box background
+    let fill_xml = if let Some(fill) = &overlay.fill {
+        let alpha = (((100.0 - fill.transparency) * 1000.0) as i64).max(0).min(100000);
+        format!(
+            r#"<a:solidFill><a:srgbClr val="{}"><a:alpha val="{alpha}"/></a:srgbClr></a:solidFill>"#,
+            fill.color
+        )
+    } else {
+        "<a:noFill/>".to_string()
+    };
+
+    // Inset margin (same all sides, in EMU)
+    let inset = overlay.margin.map(|m| {
+        let emu = (m * 12700.0) as i64; // pt to EMU
+        format!(r#" lIns="{emu}" tIns="{emu}" rIns="{emu}" bIns="{emu}""#)
+    }).unwrap_or_else(|| r#" lIns="0" tIns="0" rIns="0" bIns="0""#.to_string());
+
+    // Line spacing in 100ths of a point
+    let line_spacing_xml = overlay.line_spacing.map(|ls| {
+        let val = (ls * 100.0) as i64;
+        format!(r#"<a:lnSpc><a:spcPts val="{val}"/></a:lnSpc>"#)
+    }).unwrap_or_default();
+
     let para_content = if let Some(runs) = &overlay.runs {
         let mut xml = String::new();
         for run in runs {
@@ -154,7 +227,7 @@ fn build_text_shape_xml(overlay: &TextOverlay, shape_id: u32) -> String {
     let end_sz = (font_size * PT_TO_HPTS) as i64;
 
     format!(
-        r#"<p:sp><p:nvSpPr><p:cNvPr id="{shape_id}" name="Text {shape_id}"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm{rotation}><a:off x="{x}" y="{y}"/><a:ext cx="{w}" cy="{h}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/><a:ln/></p:spPr><p:txBody><a:bodyPr wrap="square" rtlCol="0" anchor="{anchor}" lIns="0" tIns="0" rIns="0" bIns="0"/><a:lstStyle/><a:p><a:pPr algn="{align}" indent="0" marL="0"><a:buNone/></a:pPr>{para_content}<a:endParaRPr lang="en-US" sz="{end_sz}" dirty="0"/></a:p></p:txBody></p:sp>"#
+        r#"<p:sp><p:nvSpPr><p:cNvPr id="{shape_id}" name="Text {shape_id}"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm{rotation}><a:off x="{x}" y="{y}"/><a:ext cx="{w}" cy="{h}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom>{fill_xml}<a:ln/>{shadow_xml}</p:spPr><p:txBody><a:bodyPr wrap="square" rtlCol="0" anchor="{anchor}"{inset}/><a:lstStyle/><a:p><a:pPr algn="{align}" indent="0" marL="0"><a:buNone/>{line_spacing_xml}</a:pPr>{para_content}<a:endParaRPr lang="en-US" sz="{end_sz}" dirty="0"/></a:p></p:txBody></p:sp>"#
     )
 }
 
