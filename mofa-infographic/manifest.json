@@ -30,7 +30,8 @@
               "type": "object",
               "properties": {
                 "prompt": { "type": "string", "description": "Section content description" },
-                "style": { "type": "string", "description": "Section variant" }
+                "variant": { "type": "string", "description": "Style variant for this section (e.g. 'header', 'normal', 'footer'). Defaults to 'header' for first section, 'footer' for last, 'normal' for middle sections." },
+                "refine_prompt": { "type": "string", "description": "Optional Qwen-Edit instruction to refine this section after generation (e.g. 'increase contrast')" }
               },
               "required": ["prompt"]
             }
@@ -39,9 +40,10 @@
           "out": { "type": "string", "description": "Output PNG file path" },
           "work_dir": { "type": "string", "description": "Working directory for section PNGs" },
           "concurrency": { "type": "integer", "description": "Parallel generation limit (default: 3)" },
+          "image_size": { "type": "string", "description": "Image resolution passed to Gemini (e.g. '1024x1024')" },
           "aspect": { "type": "string", "description": "Aspect ratio per section" },
           "gutter": { "type": "integer", "description": "Gap between sections in pixels (default: 0)" },
-          "refine": { "type": "boolean", "description": "Refine sections with Qwen-Edit" },
+          "refine": { "type": "boolean", "description": "Refine sections with Qwen-Edit (requires DASHSCOPE_API_KEY)" },
           "api": { "type": "string", "description": "API mode: rt (realtime, fast) or batch (50% cheaper, async)", "default": "rt", "enum": ["rt", "batch"] }
         },
         "required": ["sections", "out"]

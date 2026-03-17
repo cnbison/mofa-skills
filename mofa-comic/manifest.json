@@ -30,7 +30,7 @@
               "type": "object",
               "properties": {
                 "prompt": { "type": "string", "description": "Panel content description" },
-                "style": { "type": "string", "description": "Panel variant" }
+                "refine_prompt": { "type": "string", "description": "Optional Qwen-Edit instruction to refine this panel after generation (e.g. 'make the sky more dramatic')" }
               },
               "required": ["prompt"]
             }
@@ -40,8 +40,9 @@
           "work_dir": { "type": "string", "description": "Working directory for panel PNGs" },
           "layout": { "type": "string", "description": "Layout: horizontal, vertical, grid", "default": "horizontal" },
           "concurrency": { "type": "integer", "description": "Parallel generation limit (default: 3)" },
+          "image_size": { "type": "string", "description": "Image resolution passed to Gemini (e.g. '1024x1024')" },
           "gutter": { "type": "integer", "description": "Gap between panels in pixels (default: 20)" },
-          "refine": { "type": "boolean", "description": "Refine panels with Qwen-Edit" },
+          "refine": { "type": "boolean", "description": "Refine panels with Qwen-Edit (requires DASHSCOPE_API_KEY)" },
           "api": { "type": "string", "description": "API mode: rt (realtime, fast) or batch (50% cheaper, async)", "default": "rt", "enum": ["rt", "batch"] }
         },
         "required": ["panels", "out"]
