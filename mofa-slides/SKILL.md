@@ -50,17 +50,25 @@ message(content="Choose a style:", metadata={"inline_keyboard": [
 ```
 User's button press arrives as `[callback] style:nb-pro`.
 
-## Modes
+## Two Modes
 
-| User says | Mode | What happens |
-|-----------|------|--------------|
-| "做PPT", "make slides" | **Image** (default) | Text baked into AI image. Fast, beautiful, not editable in PowerPoint. |
-| "**可编辑**PPT", "**editable** slides" | **Editable** | AI generates image → extracts text → removes text → overlays editable text boxes. Slower, needs DASHSCOPE_API_KEY. Add `--auto-layout`. |
-| "把PDF转成**可编辑**PPT" | **PDF-to-PPTX** | Use existing page images as `source_image` + `--auto-layout`. OCR extracts text, removes it, overlays editable boxes. |
+**Image mode** (default) — text baked into AI image. Beautiful, but not editable in PowerPoint.
+- User says: "做PPT", "make slides"
+- `prompt` describes everything (background + text content)
 
-**Rule: add `--auto-layout` only when user says "可编辑" or "editable".**
+**Editable mode** — AI generates background, you place editable text boxes on top.
+- User says: "可编辑PPT", "editable slides"
+- `prompt` describes **background only** (end with "no text anywhere")
+- `texts` array has all text boxes with position, font, size, color
+- Do **NOT** use `--auto-layout`. Just use the `texts` field — the tool handles the rest.
 
-> ⚠️ **Editable mode (`--auto-layout`) is experimental.** It requires DASHSCOPE_API_KEY and involves multiple refinement passes (text extraction, removal, overlay). Results may need manual adjustment. Recommended for advanced users only.
+Slide canvas: **13.333" wide × 7.5" tall**. Common positions:
+- Title centered: `x: 0.5, y: 2.5, w: 12.333, h: 1.5, align: "c"`
+- Subtitle: `x: 0.5, y: 4.2, w: 12.333, h: 1.0, align: "c"`
+- Body left: `x: 1.0, y: 2.0, w: 5.5, h: 4.0`
+- Footer: `x: 0.5, y: 6.5, w: 12.333, h: 0.5, fontSize: 12`
+
+> `--auto-layout` exists for **PDF-to-PPTX conversion only** (uses OCR + Qwen-Edit to remove baked text from existing images). Do not use it for new slides — it degrades backgrounds.
 
 ## Styles (17)
 
@@ -185,43 +193,45 @@ Use `runs` instead of `text` when you need mixed formatting (e.g. bold title + n
 
 ## Examples
 
-### Basic slides (image mode)
+### Image mode (not editable)
 
 ```json
 [
   { "prompt": "TITLE: \"AI战略报告\"\nCentered, dramatic background", "style": "cover" },
-  { "prompt": "TITLE: \"核心发现\"\n3 metric cards: Revenue +47%, Users 10M, NPS 72", "style": "normal" },
-  { "prompt": "TITLE: \"产品路线图\"\nTimeline: Q1 MVP → Q2 Beta → Q3 Launch → Q4 Scale", "style": "data" }
+  { "prompt": "TITLE: \"核心发现\"\n3 metric cards: Revenue +47%, Users 10M, NPS 72", "style": "normal" }
 ]
 ```
 
-### Manual text positioning (pixel-perfect control)
+### Editable mode (use `texts`)
 
 ```json
 [
   {
-    "prompt": "Dark gradient background with subtle geometric patterns, no text",
+    "prompt": "Dramatic dark gradient, radial light burst, constellation pattern, deep navy to black, no text anywhere",
+    "style": "cover",
     "texts": [
-      {
-        "text": "2026 战略规划",
-        "x": 0.5, "y": 2.5, "w": 12.333, "h": 1.5,
-        "fontSize": 48, "bold": true, "color": "FFFFFF", "align": "c"
-      },
-      {
-        "text": "Confidential — Internal Use Only",
-        "x": 0.5, "y": 6.5, "w": 12.333, "h": 0.5,
-        "fontSize": 12, "color": "999999", "align": "c"
-      }
+      { "text": "2026 战略规划", "x": 0.5, "y": 2.5, "w": 12.333, "h": 1.5, "fontSize": 48, "bold": true, "color": "FFFFFF", "align": "c" },
+      { "text": "数字化转型与增长路径", "x": 0.5, "y": 4.2, "w": 12.333, "h": 1.0, "fontSize": 24, "color": "AAAAAA", "align": "c" }
+    ]
+  },
+  {
+    "prompt": "Clean professional background, subtle left sidebar in dark navy, soft gradient, no text",
+    "style": "normal",
+    "texts": [
+      { "text": "核心发现", "x": 1.0, "y": 0.5, "w": 11.0, "h": 1.0, "fontSize": 32, "bold": true, "color": "1A1A2E" },
+      { "text": "Revenue +47%\nUsers 10M\nNPS 72", "x": 1.0, "y": 2.0, "w": 5.5, "h": 4.0, "fontSize": 20, "color": "333333" }
     ]
   }
 ]
 ```
 
-### Rich text with mixed formatting
+### Editable with rich text (mixed formatting in one text box)
+
+Use `runs` instead of `text` when you need bold + normal or multi-color in a single box:
 
 ```json
 {
-  "prompt": "Clean white background with left sidebar accent",
+  "prompt": "Clean white background with left sidebar accent, no text",
   "texts": [
     {
       "runs": [
@@ -229,13 +239,6 @@ Use `runs` instead of `text` when you need mixed formatting (e.g. bold title + n
         { "text": "  Q3 2026 Results", "fontSize": 18, "color": "888888" }
       ],
       "x": 1.0, "y": 0.5, "w": 11.0, "h": 1.0
-    },
-    {
-      "runs": [
-        { "text": "$3.2B", "bold": true, "fontSize": 72, "color": "00AA44" },
-        { "text": " (+47% YoY)", "fontSize": 24, "color": "666666", "breakLine": true }
-      ],
-      "x": 1.0, "y": 2.0, "w": 5.0, "h": 2.0
     }
   ]
 }
