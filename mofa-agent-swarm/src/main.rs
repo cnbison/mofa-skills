@@ -4,13 +4,19 @@ use std::io::Read;
 use serde::Deserialize;
 use serde_json::json;
 
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+const MAX_COLLECT_RESULTS_LIMIT: usize = 100;
+const PRIORITY_MIN: i32 = 1;
+const PRIORITY_MAX: i32 = 10;
+
 // ── Input types ───────────────────────────────────────────────────────────────
 
 #[derive(Deserialize)]
-#[allow(dead_code)]
 struct SpawnInput {
     role: String,
     system_prompt: String,
+    /// Stored in the DB for future executor use; must be >= 1.
     #[serde(default = "default_max_concurrent_tasks")]
     max_concurrent_tasks: i32,
 }
@@ -29,6 +35,7 @@ struct MonitorInput {
 struct SendTaskInput {
     agent_id: String,
     task_payload: String,
+    /// Priority clamped to 1..=10 as per manifest schema.
     #[serde(default = "default_priority")]
     priority: i32,
 }
@@ -40,6 +47,7 @@ fn default_priority() -> i32 {
 #[derive(Deserialize)]
 struct CollectResultsInput {
     agent_id: String,
+    /// Capped to MAX_COLLECT_RESULTS_LIMIT (100) per request.
     #[serde(default = "default_limit")]
     limit: usize,
 }
@@ -90,6 +98,9 @@ async fn handle_spawn(input_json: &str) {
     if input.system_prompt.trim().is_empty() {
         fail("'system_prompt' must not be empty");
     }
+    if input.max_concurrent_tasks < 1 {
+        fail("'max_concurrent_tasks' must be >= 1");
+    }
 
     let conn = db::open_db().unwrap_or_else(|e| fail(&e));
     let id = uuid::Uuid::new_v4().to_string();
@@ -99,6 +110,7 @@ async fn handle_spawn(input_json: &str) {
         id: id.clone(),
         role: input.role.clone(),
         system_prompt: input.system_prompt.clone(),
+        max_concurrent_tasks: input.max_concurrent_tasks,
         status: "Active".to_string(),
         created_at,
     };
@@ -119,21 +131,23 @@ async fn handle_monitor(input_json: &str) {
 
     let conn = db::open_db().unwrap_or_else(|e| fail(&e));
     let filter = input.roles_filter.as_deref();
-    
+
     let agents = db::get_agents(&conn, filter).unwrap_or_else(|e| fail(&e));
 
     if agents.is_empty() {
         succeed("No sub-agents found in the swarm.");
     }
 
+    // Single GROUP BY query — avoids N+1 pattern
+    let pending_counts = db::get_pending_task_counts(&conn).unwrap_or_else(|e| fail(&e));
+
     let results: Vec<serde_json::Value> = agents.into_iter().map(|a| {
-        // Find tasks for this agent to show active count
-        let pending = db::get_pending_tasks(&conn, &a.id).unwrap_or_default().len();
-        
+        let pending = pending_counts.get(&a.id).copied().unwrap_or(0);
         json!({
             "id": a.id,
             "role": a.role,
             "status": a.status,
+            "max_concurrent_tasks": a.max_concurrent_tasks,
             "pending_tasks": pending,
             "created_at": a.created_at
         })
@@ -151,8 +165,11 @@ async fn handle_send_task(input_json: &str) {
         Err(e) => fail(&format!("Invalid input for send_task: {}", e)),
     };
 
+    // Clamp priority to manifest-defined range 1..=10
+    let priority = input.priority.clamp(PRIORITY_MIN, PRIORITY_MAX);
+
     let conn = db::open_db().unwrap_or_else(|e| fail(&e));
-    
+
     // Verify agent exists and is active
     let agent = match db::get_agent_by_id(&conn, &input.agent_id).unwrap_or_else(|e| fail(&e)) {
         Some(a) => a,
@@ -160,7 +177,10 @@ async fn handle_send_task(input_json: &str) {
     };
 
     if agent.status != "Active" && agent.status != "Idle" {
-        fail(&format!("Cannot send task to agent {}; current status is {}", input.agent_id, agent.status));
+        fail(&format!(
+            "Cannot send task to agent {}; current status is {}",
+            input.agent_id, agent.status
+        ));
     }
 
     let task_id = uuid::Uuid::new_v4().to_string();
@@ -170,7 +190,7 @@ async fn handle_send_task(input_json: &str) {
         id: task_id.clone(),
         agent_id: input.agent_id.clone(),
         payload: input.task_payload.clone(),
-        priority: input.priority,
+        priority,
         status: "Pending".to_string(),
         result: None,
         created_at,
@@ -181,7 +201,7 @@ async fn handle_send_task(input_json: &str) {
 
     succeed(&format!(
         "Dispatched task {} to agent {} with priority {}",
-        task_id, input.agent_id, input.priority
+        task_id, input.agent_id, priority
     ));
 }
 
@@ -191,9 +211,17 @@ async fn handle_collect_results(input_json: &str) {
         Err(e) => fail(&format!("Invalid input for collect_results: {}", e)),
     };
 
+    if input.limit > MAX_COLLECT_RESULTS_LIMIT {
+        fail(&format!(
+            "Requested limit {} exceeds maximum allowed {}",
+            input.limit, MAX_COLLECT_RESULTS_LIMIT
+        ));
+    }
+    let effective_limit = if input.limit == 0 { 1 } else { input.limit };
+
     let conn = db::open_db().unwrap_or_else(|e| fail(&e));
-    
-    let tasks = db::get_tasks_for_agent(&conn, &input.agent_id, input.limit)
+
+    let tasks = db::get_tasks_for_agent(&conn, &input.agent_id, effective_limit)
         .unwrap_or_else(|e| fail(&e));
 
     if tasks.is_empty() {
@@ -225,20 +253,22 @@ async fn handle_shutdown(input_json: &str) {
     };
 
     let conn = db::open_db().unwrap_or_else(|e| fail(&e));
-    
-    // Check if agent exists
+
     let _ = match db::get_agent_by_id(&conn, &input.agent_id).unwrap_or_else(|e| fail(&e)) {
         Some(a) => a,
         None => fail(&format!("Agent ID {} not found", input.agent_id)),
     };
 
-    // Delete tasks or mark them failed
+    // Delete pending tasks; cascade handles child rows
     db::delete_agent_tasks(&conn, &input.agent_id).unwrap_or_else(|e| fail(&e));
-    
-    // Update agent status to Stopped
+
+    // Mark agent as Stopped
     db::update_agent_status(&conn, &input.agent_id, "Stopped").unwrap_or_else(|e| fail(&e));
 
-    succeed(&format!("Agent {} has been gracefully shut down. Pending tasks deleted.", input.agent_id));
+    succeed(&format!(
+        "Agent {} has been gracefully shut down. Pending tasks deleted.",
+        input.agent_id
+    ));
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
