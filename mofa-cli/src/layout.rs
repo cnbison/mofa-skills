@@ -575,6 +575,7 @@ fn align_columns(overlays: &mut [TextOverlay], sw: f64, _sh: f64) {
 
 /// Extract text layout — currently delegates to VQA extraction.
 /// Kept as a separate entry point for pipeline compatibility (OCR path).
+#[allow(dead_code)]
 pub fn extract_text_layout_ocr(
     _dashscope: &DashscopeClient,
     gemini: &GeminiClient,
