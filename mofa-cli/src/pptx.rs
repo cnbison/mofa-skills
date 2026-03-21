@@ -170,7 +170,7 @@ fn build_text_shape_xml(overlay: &TextOverlay, shape_id: u32) -> String {
 
     // Fill for text box background
     let fill_xml = if let Some(fill) = &overlay.fill {
-        let alpha = (((100.0 - fill.transparency) * 1000.0) as i64).max(0).min(100000);
+        let alpha = (((100.0 - fill.transparency) * 1000.0) as i64).clamp(0, 100000);
         format!(
             r#"<a:solidFill><a:srgbClr val="{}"><a:alpha val="{alpha}"/></a:srgbClr></a:solidFill>"#,
             fill.color
