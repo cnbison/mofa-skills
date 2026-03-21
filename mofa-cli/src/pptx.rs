@@ -74,6 +74,7 @@ pub struct TextOverlay {
     #[serde(rename = "lineSpacing")]
     pub line_spacing: Option<f64>,
     pub margin: Option<f64>,
+    #[allow(dead_code)]
     pub transparency: Option<f64>,
     pub fill: Option<TextFill>,
 }
