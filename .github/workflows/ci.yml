@@ -24,3 +24,66 @@ jobs:
       - run: cargo check
       - run: cargo clippy -- -D warnings
       - run: cargo test
+
+  sync-registry:
+    name: Sync skill registry
+    needs: rust
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate registry.json
+        run: python3 scripts/gen-registry.py --write
+
+      - name: Push to skill-registry
+        env:
+          REGISTRY_TOKEN: ${{ secrets.SKILL_REGISTRY_TOKEN }}
+        run: |
+          set -e
+          REGISTRY_REPO="hagency-org/skill-registry"
+          BRANCH="main"
+          FILE="registry.json"
+
+          # Read generated registry
+          CONTENT=$(base64 -w0 registry.json)
+
+          # Get current file SHA (needed for update)
+          SHA=$(curl -sf \
+            -H "Authorization: token $REGISTRY_TOKEN" \
+            "https://api.github.com/repos/$REGISTRY_REPO/contents/$FILE?ref=$BRANCH" \
+            | python3 -c "import json,sys; print(json.load(sys.stdin).get('sha',''))" 2>/dev/null || echo "")
+
+          # Check if content changed
+          REMOTE_CONTENT=$(curl -sf \
+            -H "Authorization: token $REGISTRY_TOKEN" \
+            -H "Accept: application/vnd.github.v3.raw" \
+            "https://api.github.com/repos/$REGISTRY_REPO/contents/$FILE?ref=$BRANCH" 2>/dev/null || echo "")
+
+          LOCAL_CONTENT=$(cat registry.json)
+
+          if [ "$REMOTE_CONTENT" = "$LOCAL_CONTENT" ]; then
+            echo "Registry is up to date, skipping."
+            exit 0
+          fi
+
+          # Build update payload
+          MSG="chore: auto-sync from mofa-skills@${GITHUB_SHA::7}"
+          PAYLOAD=$(python3 -c "
+          import json, sys
+          print(json.dumps({
+            'message': '$MSG',
+            'content': '$CONTENT',
+            'sha': '$SHA',
+            'branch': '$BRANCH'
+          }))
+          ")
+
+          # Push update
+          curl -sf -X PUT \
+            -H "Authorization: token $REGISTRY_TOKEN" \
+            -H "Content-Type: application/json" \
+            "https://api.github.com/repos/$REGISTRY_REPO/contents/$FILE" \
+            -d "$PAYLOAD"
+
+          echo "Registry updated successfully."

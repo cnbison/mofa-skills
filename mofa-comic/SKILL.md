@@ -11,14 +11,14 @@ CLI: `mofa comic` | Styles: `mofa-comic/styles/*.toml` | Config: `mofa/config.js
 
 ## Output Paths
 
-**IMPORTANT**: Always use a unique per-request subdirectory to avoid conflicts between users:
+**IMPORTANT**: Always use relative paths under `skill-output/` with a unique per-request subdirectory:
 
 ```
-/tmp/mofa-comic-<YYYYMMDD-HHMMSS>/comic.png
-/tmp/mofa-comic-<YYYYMMDD-HHMMSS>/panels/
+skill-output/mofa-comic-<YYYYMMDD-HHMMSS>/comic.png
+skill-output/mofa-comic-<YYYYMMDD-HHMMSS>/panels/
 ```
 
-Never reuse paths like `/tmp/comic.png` — each request MUST get its own directory.
+**Never use absolute paths like `/tmp/comic.png`** — they are outside the sandbox and `send_file` will reject them. Always use relative paths which resolve within the profile's data directory.
 
 ## Interaction Guide
 
@@ -112,7 +112,7 @@ Top-level: array of panel objects.
 ```
 
 ```bash
-mofa comic --style xkcd --out /tmp/bugs.png --layout horizontal -i panels.json
+mofa comic --style xkcd --out skill-output/bugs.png --layout horizontal -i panels.json
 ```
 
 ### Multi-panel story with grid layout
@@ -129,7 +129,7 @@ mofa comic --style xkcd --out /tmp/bugs.png --layout horizontal -i panels.json
 ```
 
 ```bash
-mofa comic --style ligne-claire --out /tmp/meeting.png --layout grid --gutter 30 -i story.json
+mofa comic --style ligne-claire --out skill-output/meeting.png --layout grid --gutter 30 -i story.json
 ```
 
 ### Manga with refinement
@@ -143,13 +143,13 @@ mofa comic --style ligne-claire --out /tmp/meeting.png --layout grid --gutter 30
 ```
 
 ```bash
-mofa comic --style manga --out /tmp/samurai.png --layout vertical --refine --image-size 2K -i manga.json
+mofa comic --style manga --out skill-output/samurai.png --layout vertical --refine --image-size 2K -i manga.json
 ```
 
 ### Batch API for large comic
 
 ```bash
-mofa comic --style graphic-novel --api batch --layout grid --gutter 20 --out /tmp/epic.png -i 12-panels.json
+mofa comic --style graphic-novel --api batch --layout grid --gutter 20 --out skill-output/epic.png -i 12-panels.json
 ```
 
 ## CLI Flags

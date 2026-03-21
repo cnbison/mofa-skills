@@ -13,13 +13,13 @@ Config: `mofa/config.json`
 
 ## Output Paths
 
-**IMPORTANT**: Always use a unique per-request subdirectory to avoid conflicts between users:
+**IMPORTANT**: Always use relative paths under `skill-output/` with a unique per-request subdirectory:
 
 ```
-/tmp/mofa-cards-<YYYYMMDD-HHMMSS>/
+skill-output/mofa-cards-<YYYYMMDD-HHMMSS>/
 ```
 
-Never reuse paths like `/tmp/cards/` — each request MUST get its own directory.
+**Never use absolute paths like `/tmp/cards/`** — they are outside the sandbox and `send_file` will reject them. Always use relative paths which resolve within the profile's data directory.
 
 ## Interaction Guide
 

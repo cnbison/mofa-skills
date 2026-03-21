@@ -28,6 +28,12 @@ struct TtsInput {
     output_path: Option<String>,
     #[serde(default)]
     language: Option<String>,
+    /// Style/emotion prompt (e.g. "用兴奋激动的语气说话，充满热情和活力")
+    #[serde(default)]
+    prompt: Option<String>,
+    /// Speed factor: >1.0 = faster, <1.0 = slower (0.5-2.0)
+    #[serde(default)]
+    speed: Option<f32>,
 }
 
 #[derive(Deserialize)]
@@ -207,22 +213,78 @@ fn fetch_tts_wav(
     Ok(pcm_to_wav(&bytes, 24000))
 }
 
+/// Minimum ominix-api version required (prompt + speed support).
+const MIN_OMINIX_VERSION: &str = "1.0.0";
+
 fn check_health(client: &reqwest::blocking::Client, base_url: &str) -> Result<(), String> {
     match client
         .get(format!("{base_url}/health"))
         .timeout(Duration::from_secs(5))
         .send()
     {
-        Ok(resp) if resp.status().is_success() => Ok(()),
+        Ok(resp) if resp.status().is_success() => {
+            // Check version from health response
+            if let Ok(body) = resp.json::<serde_json::Value>() {
+                if let Some(version) = body.get("version").and_then(|v| v.as_str()) {
+                    if !version_gte(version, MIN_OMINIX_VERSION) {
+                        return Err(format!(
+                            "ominix-api {version} is too old (need >= {MIN_OMINIX_VERSION}).\n\
+                             Upgrade: cargo install --git https://github.com/OminiX-ai/OminiX-MLX ominix-api --features tts --force"
+                        ));
+                    }
+                } else {
+                    eprintln!(
+                        "Warning: ominix-api at {base_url} does not report version. \
+                         Consider upgrading for prompt/speed support."
+                    );
+                }
+            }
+            Ok(())
+        }
         Ok(resp) => Err(format!(
-            "ominix-api returned HTTP {} — is it running on {base_url}?",
+            "ominix-api returned HTTP {} at {base_url}. Check server logs.",
             resp.status()
         )),
-        Err(e) => Err(format!(
-            "Cannot reach ominix-api at {base_url}: {e}. \
-             Start it with: ominix-api --port 8080"
-        )),
+        Err(_) => {
+            // Check if the binary is installed at all
+            let installed = std::process::Command::new("which")
+                .arg("ominix-api")
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false);
+
+            if !installed {
+                Err(
+                    "ominix-api is not installed. Install it:\n\
+                     cargo install --git https://github.com/OminiX-ai/OminiX-MLX ominix-api --features tts\n\
+                     Then start: ominix-api --tts-port 8082 --clone-port 8083"
+                        .to_string(),
+                )
+            } else {
+                Err(format!(
+                    "ominix-api is installed but not running at {base_url}.\n\
+                     Start it: ominix-api --tts-port 8082 --clone-port 8083"
+                ))
+            }
+        }
     }
+}
+
+/// Simple semver comparison: is `have` >= `need`?
+fn version_gte(have: &str, need: &str) -> bool {
+    let parse = |s: &str| -> Vec<u32> {
+        s.split('.').filter_map(|p| p.parse().ok()).collect()
+    };
+    let h = parse(have);
+    let n = parse(need);
+    for i in 0..n.len().max(h.len()) {
+        let a = h.get(i).copied().unwrap_or(0);
+        let b = n.get(i).copied().unwrap_or(0);
+        if a != b {
+            return a > b;
+        }
+    }
+    true // equal
 }
 
 fn fail(msg: &str) -> ! {
@@ -307,24 +369,32 @@ fn handle_tts(input_json: &str) {
 
     let (endpoint, body) = if let Some(ref_path) = resolve_custom_voice(&voice_name) {
         // Custom voice → clone port directly (Base model)
-        (
-            format!("{}/v1/audio/speech/clone", clone_url()),
-            json!({
-                "input": input.text,
-                "reference_audio": ref_path.to_string_lossy(),
-                "language": language
-            }),
-        )
+        let mut body = json!({
+            "input": input.text,
+            "reference_audio": ref_path.to_string_lossy(),
+            "language": language
+        });
+        if let Some(ref prompt) = input.prompt {
+            body["prompt"] = json!(prompt);
+        }
+        if let Some(speed) = input.speed {
+            body["speed"] = json!(speed);
+        }
+        (format!("{}/v1/audio/speech/clone", clone_url()), body)
     } else {
         // Preset voice → TTS port directly (CustomVoice model)
-        (
-            format!("{}/v1/audio/speech", tts_url()),
-            json!({
-                "input": input.text,
-                "voice": voice_name,
-                "language": language
-            }),
-        )
+        let mut body = json!({
+            "input": input.text,
+            "voice": voice_name,
+            "language": language
+        });
+        if let Some(ref prompt) = input.prompt {
+            body["prompt"] = json!(prompt);
+        }
+        if let Some(speed) = input.speed {
+            body["speed"] = json!(speed);
+        }
+        (format!("{}/v1/audio/speech", tts_url()), body)
     };
 
     let wav_bytes = match fetch_tts_wav(&client, &endpoint, &body) {

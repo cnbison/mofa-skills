@@ -5,12 +5,33 @@
   "description": "Voice management and TTS with custom voice cloning via ominix-api",
   "timeout_secs": 300,
   "requires_network": true,
+  "requires": {
+    "bins": ["ominix-api"],
+    "os": ["darwin"]
+  },
+  "install": [
+    {
+      "id": "ominix-api",
+      "kind": "cargo",
+      "crate": "ominix-api",
+      "bins": ["ominix-api"],
+      "label": "OminiX API server (Apple Silicon TTS inference)",
+      "os": ["darwin"]
+    }
+  ],
   "dependencies": {
     "ominix-api": {
-      "repo": "https://github.com/OminiX-MLX/OminiX-MLX",
+      "version": "1.0.0",
+      "repo": "https://github.com/OminiX-ai/OminiX-MLX",
       "crate": "ominix-api",
       "features": ["tts"],
       "description": "Local inference server for Qwen3 TTS with voice cloning on Apple Silicon"
+    },
+    "ominix-mlx": {
+      "version": "1.0.0",
+      "repo": "https://github.com/OminiX-ai/OminiX-MLX",
+      "crates": ["qwen3-tts-mlx", "mlx-rs-core"],
+      "description": "MLX inference runtime for Qwen3-TTS on Apple Silicon"
     },
     "models": {
       "Qwen3-TTS-12Hz-1.7B-CustomVoice-8bit": "~/.OminiX/models/Qwen3-TTS-12Hz-1.7B-CustomVoice-8bit (preset voices)",
@@ -39,6 +60,14 @@
           "language": {
             "type": "string",
             "description": "Speech language: 'chinese' (default), 'english', 'japanese', 'korean'"
+          },
+          "prompt": {
+            "type": "string",
+            "description": "Style/emotion prompt to control how the voice speaks. Works with both preset and cloned voices. Verified Chinese prompts: excited='用兴奋激动的语气说话，充满热情和活力', sad='用悲伤失望的语气说话，声音低沉，语速缓慢', cheerful='用开朗愉快的语气说话，声音明亮上扬，节奏轻快', shout='用大声喊叫的方式说话，声音高亢有力，语速快', sarcastic='用讽刺嘲讽的语气说话，语调阴阳怪气，拖长尾音', soft='用温柔轻柔的语气说话', panic='用惊慌恐惧的语气说话，声音颤抖，语速急促'. Custom prompts also supported."
+          },
+          "speed": {
+            "type": "number",
+            "description": "Speed factor: >1.0 = faster, <1.0 = slower. Range 0.5-2.0. Default: 1.0"
           }
         },
         "required": ["text"]

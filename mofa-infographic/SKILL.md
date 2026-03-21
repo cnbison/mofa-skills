@@ -11,14 +11,14 @@ CLI: `mofa infographic` | Styles: `mofa-infographic/styles/*.toml` | Config: `mo
 
 ## Output Paths
 
-**IMPORTANT**: Always use a unique per-request subdirectory to avoid conflicts between users:
+**IMPORTANT**: Always use relative paths under `skill-output/` with a unique per-request subdirectory:
 
 ```
-/tmp/mofa-infographic-<YYYYMMDD-HHMMSS>/poster.png
-/tmp/mofa-infographic-<YYYYMMDD-HHMMSS>/sections/
+skill-output/mofa-infographic-<YYYYMMDD-HHMMSS>/poster.png
+skill-output/mofa-infographic-<YYYYMMDD-HHMMSS>/sections/
 ```
 
-Never reuse paths like `/tmp/poster.png` — each request MUST get its own directory.
+**Never use absolute paths like `/tmp/poster.png`** — they are outside the sandbox and `send_file` will reject them. Always use relative paths which resolve within the profile's data directory.
 
 ## Interaction Guide
 
@@ -140,7 +140,7 @@ Top-level: array of section objects.
 ```
 
 ```bash
-mofa infographic --style cyberpunk-neon --out /tmp/ai-poster.png -i tech.json
+mofa infographic --style cyberpunk-neon --out skill-output/ai-poster.png -i tech.json
 ```
 
 ### Business report (5 sections)
@@ -156,7 +156,7 @@ mofa infographic --style cyberpunk-neon --out /tmp/ai-poster.png -i tech.json
 ```
 
 ```bash
-mofa infographic --style clean-light --out /tmp/review.png --image-size 2K -i report.json
+mofa infographic --style clean-light --out skill-output/review.png --image-size 2K -i report.json
 ```
 
 ### Magazine editorial (3 sections with refinement)
@@ -170,13 +170,13 @@ mofa infographic --style clean-light --out /tmp/review.png --image-size 2K -i re
 ```
 
 ```bash
-mofa infographic --style editorial --out /tmp/remote-work.png --refine --image-size 4K -i editorial.json
+mofa infographic --style editorial --out skill-output/remote-work.png --refine --image-size 4K -i editorial.json
 ```
 
 ### Batch API for large infographic
 
 ```bash
-mofa infographic --style multi-panel --api batch --out /tmp/mega-poster.png -i 10-sections.json
+mofa infographic --style multi-panel --api batch --out skill-output/mega-poster.png -i 10-sections.json
 ```
 
 ## CLI Flags
