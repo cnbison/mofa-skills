@@ -87,6 +87,7 @@ pub fn run(
     Ok(result)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn gen_cards_sync(
     gemini: &GeminiClient,
     card_dir: &Path,
