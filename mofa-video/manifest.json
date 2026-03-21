@@ -1,5 +1,59 @@
 {
   "name": "mofa-video",
   "version": "0.1.0",
-  "tools": []
+  "timeout_secs": 3600,
+  "binaries": {
+    "darwin-aarch64": {
+      "url": "https://github.com/mofa-org/mofa-skills/releases/download/v0.2.0/mofa-darwin-aarch64.tar.gz",
+      "sha256": "c02525ab00c4b81c95b87afb9a2018c81ced5af8eab9b25840a0f351a5e452e5"
+    },
+    "darwin-x86_64": {
+      "url": "https://github.com/mofa-org/mofa-skills/releases/download/v0.2.0/mofa-darwin-x86_64.tar.gz",
+      "sha256": "18cbcc13722440f174943a629ebe67ed6e6aa529848984637aeeca8821d1155a"
+    },
+    "linux-x86_64": {
+      "url": "https://github.com/mofa-org/mofa-skills/releases/download/v0.2.0/mofa-linux-x86_64.tar.gz",
+      "sha256": "458c1da00cda7313b19abab9b80038e0b1423fa28e3ab241e2a07acc70d14048"
+    }
+  },
+  "tools": [
+    {
+      "name": "mofa_video",
+      "description": "Generate animated video cards using Gemini image generation and Veo image-to-video. Phase 1: Generate still images in parallel. Phase 2: Animate each image with Gemini Veo (sequential, rate-limited). Phase 3: Composite all clips with ffmpeg and optional background music into a final MP4.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "cards": {
+            "type": "array",
+            "description": "Array of video card objects to generate",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name":       { "type": "string", "description": "Card identifier used for output filenames (e.g. card-01)" },
+                "prompt":     { "type": "string", "description": "Image content description for Gemini image generation" },
+                "style":      { "type": "string", "description": "Image style variant (e.g. front). Defaults to style's default variant." },
+                "anim_style": { "type": "string", "description": "Animation style variant override for this card (shuimo, festive, gentle, dynamic)" },
+                "anim_desc":  { "type": "string", "description": "Additional description appended to the animation prompt" }
+              },
+              "required": ["name", "prompt"]
+            }
+          },
+          "card_dir":       { "type": "string", "description": "Working directory for generated PNG images and MP4 videos. Must be unique per request (e.g. /tmp/mofa-video-20260315-143022)." },
+          "style":          { "type": "string", "description": "Image style template name from styles/ directory (default: video-card)", "default": "video-card" },
+          "anim_style":     { "type": "string", "description": "Animation variant applied to all cards. video-card style: shuimo (ink wash), festive (Chinese painting), gentle (dreamy), dynamic (energetic). social-story style: anim_minimal, anim_bold, anim_cinematic. product-reel style: anim_tech, anim_lifestyle, anim_luxury. Default: shuimo", "default": "shuimo" },
+          "aspect":         { "type": "string", "description": "Aspect ratio for generated images (default: 9:16 for vertical video)", "default": "9:16" },
+          "image_size":     { "type": "string", "description": "Image resolution: 1K, 2K, or 4K. Higher quality is slower.", "enum": ["1K", "2K", "4K"] },
+          "concurrency":    { "type": "integer", "description": "Number of parallel workers for Phase 1 image generation (default: 3). Veo animation in Phase 2 is always sequential.", "default": 3 },
+          "still_duration": { "type": "number", "description": "Duration in seconds of the still image shown before animation begins (default: 2.0)", "default": 2.0 },
+          "crossfade_dur":  { "type": "number", "description": "Duration in seconds of the crossfade transition between cards (default: 1.0)", "default": 1.0 },
+          "fade_out_dur":   { "type": "number", "description": "Duration in seconds of the final fade-out (default: 1.5)", "default": 1.5 },
+          "music_volume":   { "type": "number", "description": "Background music volume from 0.0 (silent) to 1.0 (full). Default: 0.3", "default": 0.3 },
+          "music_fade_in":  { "type": "number", "description": "Duration in seconds for background music fade-in (default: 2.0)", "default": 2.0 },
+          "bgm":            { "type": "string", "description": "Path to background music file (MP3/WAV). Optional. No BGM if omitted." },
+          "api":            { "type": "string", "description": "API mode for image generation: rt (realtime, fast) or batch (50% cheaper, async 5-30 min). Veo always uses realtime.", "default": "rt", "enum": ["rt", "batch"] }
+        },
+        "required": ["cards", "card_dir"]
+      }
+    }
+  ]
 }

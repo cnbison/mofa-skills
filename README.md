@@ -18,7 +18,25 @@ AI-powered content generation platform that turns text into visual media — pre
 | **mofa-github** | text | — | GitHub integration via `gh` CLI (issues, PRs, CI, releases, API) |
 | **mofa-public-apis** | text | 40+ categories | Search free public APIs — browse by category, auth, HTTPS, CORS |
 | **mofa-mcdonalds** | text | — | McDonald's China ordering via MCP — 点餐、领券、积分兑换 |
+| **mofa-xhs** | text | — | Xiaohongshu (小红书) integration — search, read, like, comment, publish |
+| **mofa-crawler** | text | — | Web crawling via Cloudflare Browser Rendering API — full-site extraction with JS rendering |
+| **mofa-logo** | SVG | 8 styles | AI logo generation with Claude Opus 4.6 — minimalist, mascot, emblem, wordmark |
 | **mofa-fm** | `.wav` | — | Voice TTS with custom voice cloning via Qwen3-TTS on Apple Silicon |
+
+### DingTalk Wukong Skills (from [stvlynn/dingtalk-wukong-skills](https://github.com/stvlynn/dingtalk-wukong-skills))
+
+| Skill | Description |
+|-------|-------------|
+| **docx** | Advanced Word document creation/editing with tracked changes, comments, formatting preservation |
+| **xlsx** | Excel spreadsheet processing with formulas, data analysis, and visualization |
+| **pptx** | PowerPoint presentation creation/editing, including HTML-to-PPT conversion |
+| **pdf** | PDF processing — text/table extraction, creation, merging/splitting, form filling |
+| **pdf-convert-to-word** | Professional PDF to Word/Markdown conversion |
+| **dws** | DingTalk workspace operations (OA, calendar, docs, todo, chat, approval, attendance, etc.) |
+| **12306-train-query** | Real-time 12306 train ticket and schedule queries |
+| **ctrip-flight-search** | Global flight search and price comparison via Ctrip |
+| **dianping-info-query** | Local merchant info and reviews from Dianping (大众点评) |
+| **skill-creator** | Meta-tool for designing, validating, and packaging new agent skills |
 
 ## Architecture
 
@@ -44,6 +62,9 @@ mofa-skills/
 ├── mofa-github/          # GitHub integration via gh CLI
 ├── mofa-public-apis/     # Public API discovery (local cache)
 ├── mofa-mcdonalds/       # McDonald's China ordering via MCP Server
+├── mofa-xhs/             # Xiaohongshu (小红书) integration via xhs-cli
+├── mofa-crawler/         # Web crawling via Cloudflare Browser Rendering API
+├── mofa-logo/            # AI logo generation with Claude Opus 4.6
 ├── mofa-fm/              # Voice TTS + cloning (Pure Rust, via ominix-api)
 │
 └── mofa-cli/             # Pure Rust CLI (single binary, no Node.js)

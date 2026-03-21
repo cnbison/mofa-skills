@@ -1,0 +1,105 @@
+digraph VideoArchitecture {
+    graph [label="mofa-video Architecture", fontsize=14, fontname="Helvetica", rankdir=LR]
+    node [shape=box, fontname="Helvetica", fontsize=10, style=filled]
+    edge [fontname="Helvetica", fontsize=9]
+
+    // Entry
+    User [label="User Request\n(cards JSON + style)", shape=ellipse, fillcolor=lightblue]
+    Entry [label="Entry Agent\n• Gather card prompts\n• Select style + anim variant\n• Confirm card plan", fillcolor=lightyellow]
+
+    // Style config
+    StyleTOML [label="styles/video-card.toml\n(or social-story / product-reel)\nanim variants: shuimo, festive\ngentle, dynamic", shape=note, fillcolor=lightgray]
+
+    // Phase 1: Image generation (parallel)
+    subgraph cluster_phase1 {
+        label="Phase 1 — Image Generation (parallel, concurrency=3)"
+        style=dashed
+        color=darkgreen
+        fontname="Helvetica"
+        fontsize=10
+
+        Card1 [label="Generate\ncard-01.png", fillcolor=lightgreen]
+        Card2 [label="Generate\ncard-02.png", fillcolor=lightgreen]
+        CardN [label="Generate\ncard-N.png", fillcolor=lightgreen]
+    }
+
+    // Gemini image API
+    GeminiImg [label="Gemini API\ngemini-3.1-flash-image-preview\nPOST /v1beta/models/..:generateImages", shape=cylinder, fillcolor=lightcyan]
+
+    // Cache check
+    Cache [label="Cache Check\nfile exists + size > 10KB?\nskip regeneration", shape=diamond, fillcolor=lightyellow]
+
+    // Phase 2: Veo animation (sequential)
+    subgraph cluster_phase2 {
+        label="Phase 2 — Veo Animation (sequential, rate-limited)"
+        style=dashed
+        color=darkorange
+        fontname="Helvetica"
+        fontsize=10
+
+        Veo1 [label="Animate\ncard-01.mp4", fillcolor=lightsalmon]
+        Veo2 [label="Animate\ncard-02.mp4", fillcolor=lightsalmon]
+        VeoN [label="Animate\ncard-N.mp4", fillcolor=lightsalmon]
+    }
+
+    // Veo API
+    VeoAPI [label="Gemini Veo API\nveo-3.1-generate-preview\nPOST ..:generateVideos\nlong-poll (10s interval, 20min max)", shape=cylinder, fillcolor=lightcyan]
+
+    // Phase 3: ffmpeg composite
+    Composite [label="Phase 3 — ffmpeg Composite\n• still_duration before animation\n• crossfade between clips\n• fade_out at end\n• mix BGM at music_volume", fillcolor=lightpink]
+
+    // Output
+    Output [label="final-video.mp4\n/tmp/mofa-video-<timestamp>/", shape=ellipse, fillcolor=lightblue]
+
+    // Auth / config
+    Auth [label="GEMINI_API_KEY\n(Gemini image + Veo)\nffmpeg binary", shape=hexagon, fillcolor=lightsalmon]
+
+    // Timing note
+    Note [label="Timing: ~2-5 min per card (Veo)\nKeep cards <= 5 per call\nCached clips reused on rerun", shape=note, fillcolor=lightgray]
+
+    // Edges — entry
+    User -> Entry
+    Entry -> Card1
+    Entry -> Card2
+    Entry -> CardN
+    StyleTOML -> Entry [style=dashed, color=gray]
+
+    // Phase 1 -> Gemini
+    Card1 -> Cache
+    Card2 -> Cache
+    CardN -> Cache
+    Cache -> GeminiImg [label="miss"]
+    Cache -> Veo1 [label="hit (reuse)", style=dashed, color=gray]
+    GeminiImg -> Card1 [label="card-01.png"]
+    GeminiImg -> Card2 [label="card-02.png"]
+    GeminiImg -> CardN [label="card-N.png"]
+
+    // Phase 1 -> Phase 2
+    Card1 -> Veo1
+    Card2 -> Veo2
+    CardN -> VeoN
+
+    // Phase 2 -> Veo API
+    Veo1 -> VeoAPI
+    Veo2 -> VeoAPI
+    VeoN -> VeoAPI
+    VeoAPI -> Veo1 [label="card-01.mp4"]
+    VeoAPI -> Veo2 [label="card-02.mp4"]
+    VeoAPI -> VeoN [label="card-N.mp4"]
+
+    // Phase 2 -> Phase 3
+    Veo1 -> Composite
+    Veo2 -> Composite
+    VeoN -> Composite
+
+    // Phase 3 -> Output
+    Composite -> Output
+
+    // Auth edges
+    Auth -> GeminiImg [style=dashed, color=red]
+    Auth -> VeoAPI [style=dashed, color=red]
+    Auth -> Composite [style=dashed, color=red]
+
+    // Notes
+    Entry -> Note [style=dashed, color=gray]
+}

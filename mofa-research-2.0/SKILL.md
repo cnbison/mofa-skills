@@ -371,6 +371,51 @@ Save to: `./research/{query-slug}/kb/analysis.md`
 }
 ```
 
+## Phase 5.5: Memory Persistence (mofa-memory integration)
+
+This phase completes the `ResearchMemory` node shown in `architecture.dot`. It has no extra compute cost — it calls `mofa-memory` which runs in milliseconds (SQLite read/write) after the embedding API call.
+
+### Pre-Research Recall (before Phase 1)
+
+Before generating research angles, call `retrieve_memory` to surface any prior research on the same topic:
+
+```json
+{"query": "{{ORIGINAL_USER_QUERY}}", "top_k": 3, "min_score": 0.75}
+```
+
+If results are returned with `score >= 0.75`, present them to the user:
+
+> "I found prior research on this topic from {created_at} (relevance: {score}). Shall I build on it or start fresh?"
+
+If the user wants to build on it, include the prior report content in the Entry Agent's context for Phase 1.
+
+### Post-Synthesis Persistence (after Phase 5)
+
+After the report is written to `./research/{slug}/report.md`, persist it to long-term memory.
+
+**Persist the final report:**
+```json
+{
+  "content": "<full text read from ./research/{query-slug}/report.md>",
+  "tags": ["{query-slug}", "{primary-topic}", "research-report"],
+  "source": "./research/{query-slug}/report.md"
+}
+```
+
+**Persist the knowledge base:**
+```json
+{
+  "content": "<full text read from ./research/{query-slug}/kb/merged_outputs.md>",
+  "tags": ["{query-slug}", "{primary-topic}", "kb-cache"],
+  "source": "./research/{query-slug}/kb/merged_outputs.md"
+}
+```
+
+**Requires:** `mofa-memory` skill installed and `OPENAI_API_KEY` available.
+**Skip silently** if `mofa-memory` binary is not found — memory is optional, research always completes.
+
+---
+
 ## User Output (Simplified)
 
 **During research, ONLY show user:**
@@ -479,3 +524,171 @@ With 4-8 parallel workers:
 | Recursion | Static | Dynamic (gap-driven) |
 | Output Format | Simple | Docling-inspired structured |
 | Plan Mode | No | TodoList-ready |
+
+## Related Skills
+
+### mofa-memory
+
+Persistent vector memory across agent runs. Stores research reports in SQLite with OpenAI embeddings for semantic recall in future sessions.
+
+**Use with mofa-research-2.0 when:**
+- Running repeated research on related topics (avoids redundant work)
+- Building a knowledge base over multiple research sessions
+- Wanting to detect prior research before starting a new investigation
+
+**Integration pattern:**
+```
+mofa-memory: retrieve_memory(query) → surface prior research (optional)
+      ↓
+mofa-research-2.0: Plan → Discover → Analyze → Synthesize → Report
+      ↓
+mofa-memory: store_memory(report + kb) → persist for future sessions
+```
+
+### mofa-crawler
+Web crawling via Cloudflare Browser Rendering API for data acquisition.
+
+**Use with mofa-research-2.0 when:**
+- Target data is on specific websites not indexed by search engines
+- Need full-site extraction (e.g., documentation, knowledge bases)
+- Require JavaScript-rendered content (SPAs, React/Vue sites)
+- Want structured data extraction with AI
+
+**Integration pattern:**
+```
+mofa-crawler: Crawl docs site → Markdown
+      ↓
+mofa-research-2.0: Analyze + Synthesize → Research report
+```
+
+### mofa-firecrawl
+Advanced web crawling and scraping via Firecrawl CLI with support for single-page scraping, full-site crawling, URL mapping, web search, and cloud browser automation.
+
+**Use with mofa-research-2.0 when:**
+- Need comprehensive site crawling with structured output
+- Require dynamic content extraction with JavaScript rendering
+- Want to combine web search with content scraping
+- Need browser automation (clicking, form filling, navigation)
+- Target sites require advanced extraction capabilities
+
+**Integration pattern:**
+```
+mofa-research-2.0: Plan research angles
+      ↓
+mofa-firecrawl: Crawl target sites + Search supplementary sources
+      ↓
+mofa-research-2.0: Cross-reference + Analyze + Synthesize
+```
+
+**Feature comparison:**
+| Feature | mofa-crawler | mofa-firecrawl |
+|---------|--------------|----------------|
+| Single page scrape | ✓ | ✓ |
+| Full-site crawl | ✗ | ✓ |
+| URL mapping | ✗ | ✓ |
+| Web search | ✗ | ✓ |
+| Browser automation | ✗ | ✓ |
+| Cloud browser sessions | ✗ | ✓ |
+| Self-hosted option | ✗ | ✓ |
+
+### mofa-verge-browser
+GUI browser sandbox automation with real visual Chromium, supporting CDP automation, GUI screenshots, and human-in-the-loop intervention.
+
+**Use with mofa-research-2.0 when:**
+- Target sites require visual interaction (captcha, MFA, complex authentication)
+- Need human verification or intervention during research
+- Want visual evidence of page states during research
+- Researching sites with anti-bot measures that need real browser behavior
+- Need to handle popups, downloads, or multi-tab scenarios
+
+**Integration pattern:**
+```
+mofa-research-2.0: Plan research angles
+      ↓
+mofa-verge-browser: Visual browser automation + human intervention when needed
+      ↓
+mofa-research-2.0: Analyze visual evidence and extracted data
+```
+
+**Feature comparison with mofa-firecrawl:**
+| Feature | mofa-firecrawl | mofa-verge-browser |
+|---------|---------------|-------------------|
+| Hosting | Cloud service | Self-hosted (local/Docker) |
+| GUI browser | ✗ | ✓ (Real Chromium with GUI) |
+| Visual screenshot | Basic | GUI-level with browser UI |
+| Human intervention | ✗ | ✓ (noVNC/Xpra sessions) |
+| CDP/Playwright | Limited | Full WebSocket CDP support |
+| Captcha handling | ✗ | ✓ (with human-in-the-loop) |
+| Ideal for | Large-scale crawling | Complex auth, visual tasks |
+
+### mofa-pinchtab
+Lightweight AI browser control via HTTP API with token-efficient text extraction (~800 tokens/page) and multi-instance parallel processing.
+
+**Use with mofa-research-2.0 when:**
+- Need token-efficient content extraction (cheaper than screenshots by 5-13x)
+- Want lightweight local browser control without Docker complexity
+- Need parallel multi-instance processing for batch URL extraction
+- Require fast HTTP API-based automation
+
+**Integration pattern:**
+```
+mofa-research-2.0: Plan research angles
+      ↓
+mofa-pinchtab: Parallel extraction of content from multiple sources
+      ↓
+mofa-research-2.0: Analyze extracted text → Research report
+```
+
+**Feature comparison:**
+| Feature | mofa-firecrawl | mofa-verge-browser | mofa-pinchtab |
+|---------|---------------|-------------------|---------------|
+| Hosting | Cloud | Self-hosted (Docker) | Local binary |
+| Setup complexity | Low | High | Low |
+| Token efficiency | Medium | Low | **High** (~800t/page) |
+| Multi-instance | ✗ | ✓ | ✓ |
+| GUI browser | ✗ | ✓ | ✗ |
+| Human intervention | ✗ | ✓ | ✗ |
+| Best for | Scale | Complex auth | **Token-efficient extraction** |
+
+### mofa-xhs
+Xiaohongshu (小红书) integration for social media research.
+
+**Use with mofa-research-2.0 when:**
+- Researching Chinese consumer trends and opinions
+- Analyzing product reviews and user experiences
+- Tracking influencer content and engagement
+- Studying fashion/beauty/travel trends
+
+**Integration pattern:**
+```
+mofa-xhs: Search topics → Extract notes
+      ↓
+mofa-research-2.0: Cross-reference + Analyze → Trend report
+```
+
+### mofa-public-apis
+Public API discovery for accessing external data sources.
+
+**Use with mofa-research-2.0 when:**
+- Need weather, finance, news data for research
+- Looking for free data sources without API keys
+- Building data enrichment pipelines
+
+### mofa-crawlee-python
+Web scraping with Crawlee-Python library for structured data extraction.
+
+**Use with mofa-research-2.0 when:**
+- Need to crawl and extract data from websites
+- Target sites have JavaScript-heavy content (SPAs)
+- Require robust scraping with retries and proxy rotation
+- Want exportable datasets (JSON, CSV, Parquet)
+
+**Integration pattern:**
+```
+mofa-research-2.0: Identify data sources
+      ↓
+mofa-crawlee-python: Crawl and extract structured data
+      ↓
+mofa-research-2.0: Analyze extracted data → Research report
+```
+

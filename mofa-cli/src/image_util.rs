@@ -6,7 +6,7 @@ use std::path::Path;
 
 /// Open an image, guessing format from content (not extension).
 fn open_image(p: &Path) -> Result<image::DynamicImage> {
-    let reader = image::io::Reader::open(p)
+    let reader = image::ImageReader::open(p)
         .map_err(|e| eyre::eyre!("opening {}: {e}", p.display()))?
         .with_guessed_format()
         .map_err(|e| eyre::eyre!("guessing format {}: {e}", p.display()))?;
