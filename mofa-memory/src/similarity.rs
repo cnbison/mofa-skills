@@ -85,6 +85,6 @@ mod tests {
         // Due to floating point, dot/norm can slightly exceed 1.0 — clamp handles this
         let v = vec![1.0f32];
         let score = cosine(&v, &v);
-        assert!(score >= -1.0 && score <= 1.0);
+        assert!((-1.0..=1.0).contains(&score));
     }
 }
