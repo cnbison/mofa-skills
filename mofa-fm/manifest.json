@@ -68,7 +68,7 @@
           },
           "output_path": {
             "type": "string",
-            "description": "Path to save the WAV file. Default: /tmp/crew_fm_tts_<timestamp>.wav"
+            "description": "Path to save the audio file. Leave empty — the file is automatically saved to the workspace directory."
           },
           "language": {
             "type": "string",
