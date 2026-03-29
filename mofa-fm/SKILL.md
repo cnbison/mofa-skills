@@ -96,16 +96,31 @@ Env vars: `OMINIX_API_URL` (server URL, auto-discovered), `OCTOS_DATA_DIR` (voic
 
 Synthesize speech from text. Supports **long text** — the server automatically splits at sentence boundaries and streams audio, so pass the entire text in one call. Do NOT manually split text into smaller pieces. Supports preset voices, saved custom voices, emotion control, and speed adjustment.
 
+**IMPORTANT: Long text TTS (>200 chars) takes 30-120+ seconds.** To avoid blocking the user, use the `spawn` tool with `mode: "background"` for any non-trivial TTS:
+
+```
+spawn(
+  task: "Generate audio from this text and send it to the user: [text here]",
+  system_prompt: "You are an audio producer. Use fm_tts to generate speech. After generating, use send_file to deliver the mp3 to the user. Use prompt='用专业播音员的语气朗读' or leave prompt empty for natural content-aware tone.",
+  allowed_tools: ["fm_tts", "send_file"],
+  mode: "background"
+)
+```
+
+Then tell the user "Audio is being generated, I'll send it when ready" and continue the conversation.
+
+For short text (<200 chars), call fm_tts directly (sync) — it completes in a few seconds.
+
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `text` | string | **yes** | Text to speak |
 | `voice` | string | no | Voice name: preset (vivian, ryan, etc.) or saved custom voice. Default: vivian |
 | `language` | string | no | chinese, english, japanese, korean. Default: auto-detect |
-| `prompt` | string | no | Emotion/style prompt (see tables above). e.g. `"用兴奋激动的语气说话"` |
+| `prompt` | string | no | Style instruction to override content-based tone. Leave empty for natural prosody. |
 | `speed` | float | no | Speed factor: 0.5 (slow) to 2.0 (fast). Default: 1.0 |
 
 ```json
-{"text": "大家好，欢迎收听今天的节目", "voice": "vivian", "prompt": "用兴奋激动的语气说话", "speed": 1.2}
+{"text": "大家好，欢迎收听今天的节目", "voice": "vivian", "speed": 1.2}
 ```
 
 ### fm_voice_save
