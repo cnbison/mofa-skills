@@ -17,6 +17,7 @@ use std::sync::{Arc, Mutex};
 
 /// Route image generation to Gemini or Dashscope based on model name.
 /// Models starting with "qwen-image" go to Dashscope, everything else to Gemini.
+#[allow(clippy::too_many_arguments)]
 fn generate_image(
     gemini: &GeminiClient,
     dashscope: &Option<DashscopeClient>,
