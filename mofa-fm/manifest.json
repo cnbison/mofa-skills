@@ -136,8 +136,8 @@
   ],
   "binaries": {
     "darwin-aarch64": {
-      "url": "https://github.com/mofa-org/mofa-skills/releases/download/v0.3.0/mofa-fm-darwin-aarch64.tar.gz",
-      "sha256": "1beb2d21b9ed70d70623a2542783d3f8fdb531df352814a4a03daaa077e23470"
+      "url": "https://github.com/mofa-org/mofa-skills/releases/download/v0.4.0/mofa-fm-darwin-aarch64.tar.gz",
+      "sha256": "8005c778949df5c0728a6b8f0574404a81837fcb4c1269a16e1129bd8958bb01"
     }
   }
 }
