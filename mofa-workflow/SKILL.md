@@ -21,7 +21,7 @@ architect ──→ developer ──→ reviewer ──→ tester
 run_pipeline(pipeline="mofa-workflow/team_build", input="<task description>")
 ```
 
-The pipeline file is at `~/.crew/skills/mofa-workflow/team_build.dot`.
+The pipeline file is at `~/.octos/skills/mofa-workflow/team_build.dot`.
 
 ## Agent Roles
 

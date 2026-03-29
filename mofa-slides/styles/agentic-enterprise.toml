@@ -40,6 +40,7 @@ LAYOUT:
 - 0.5" minimum margins. Breathing room.
 
 Clean, institutional, authoritative. Detailed wireframe illustrations with purple-toned premium aesthetic.
+
 """
 
 [variants.warm]
@@ -70,6 +71,7 @@ LAYOUT:
 - 0.5" minimum margins.
 
 Warm, inviting, premium. Detailed wireframe illustrations.
+
 """
 
 [variants.cover]
@@ -91,6 +93,7 @@ ILLUSTRATION STYLE:
 - Elegant, premium — like a McKinsey annual report cover
 
 Light, airy, premium. Atmospheric wireframe illustration behind title.
+
 """
 
 [variants.data]
@@ -118,5 +121,6 @@ ILLUSTRATION STYLE (CRITICAL):
 Even data slides need PROMINENT WIREFRAME illustrations — detailed line art scene compositions (network diagrams, server racks, flow charts, brain outlines). NOT tiny icons. Each data slide should have at least one medium-to-large wireframe illustration element. NO solid fills, NO gradients — pure line art in purple-gray.
 
 McKinsey data slide with detailed wireframe illustrations.
+
 """
 

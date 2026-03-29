@@ -167,6 +167,20 @@ enum Commands {
         #[arg(long, short)]
         input: Option<PathBuf>,
     },
+    /// Unpack a PPTX/DOCX/XLSX into a directory of XML files
+    PptxUnpack {
+        /// Input Office file (.pptx, .docx, .xlsx)
+        input: PathBuf,
+        /// Output directory
+        output_dir: PathBuf,
+    },
+    /// Pack a directory of XML files back into a PPTX/DOCX/XLSX
+    PptxPack {
+        /// Input directory (unpacked Office document)
+        input_dir: PathBuf,
+        /// Output Office file (.pptx, .docx, .xlsx)
+        output: PathBuf,
+    },
     /// Generate animated video cards with Veo
     Video {
         /// Image style name
@@ -216,7 +230,34 @@ enum Commands {
 
 fn read_input(path: Option<&PathBuf>) -> Result<String> {
     match path {
-        Some(p) => Ok(std::fs::read_to_string(p)?),
+        Some(p) => {
+            // JS input support: if the file ends in .js, evaluate it with Node
+            // and capture the JSON output. The JS file should module.exports an array.
+            if p.extension().is_some_and(|ext| ext == "js") {
+                eprintln!("JS input: evaluating {} with Node...", p.display());
+                let abs = std::fs::canonicalize(p)?;
+                let script = format!(
+                    "const fs=require('fs');\
+                     const m={{}};\
+                     const module={{exports:m}};\
+                     eval(fs.readFileSync({0},'utf8'));\
+                     console.log(JSON.stringify(module.exports));",
+                    serde_json::to_string(&abs.to_string_lossy().as_ref())?
+                );
+                let output = std::process::Command::new("node")
+                    .arg("-e")
+                    .arg(&script)
+                    .output()
+                    .map_err(|e| eyre::eyre!("failed to run node: {e}. Is Node.js installed?"))?;
+                if !output.status.success() {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    eyre::bail!("node failed: {stderr}");
+                }
+                Ok(String::from_utf8(output.stdout)?)
+            } else {
+                Ok(std::fs::read_to_string(p)?)
+            }
+        }
         None => {
             let mut buf = String::new();
             std::io::stdin().read_to_string(&mut buf)?;
@@ -742,7 +783,183 @@ fn main() -> Result<()> {
                 matches!(api, ApiMode::Batch),
             )?;
         }
+        Commands::PptxUnpack { input, output_dir } => {
+            use std::io::Read as IoRead;
+            eprintln!("Unpacking {} → {}", input.display(), output_dir.display());
+            std::fs::create_dir_all(&output_dir)?;
+            let file = std::fs::File::open(&input)?;
+            let mut archive = zip::ZipArchive::new(file)?;
+            for i in 0..archive.len() {
+                let mut entry = archive.by_index(i)?;
+                let out_path = output_dir.join(entry.name());
+                if entry.is_dir() {
+                    std::fs::create_dir_all(&out_path)?;
+                } else {
+                    if let Some(parent) = out_path.parent() {
+                        std::fs::create_dir_all(parent)?;
+                    }
+                    let mut buf = Vec::new();
+                    entry.read_to_end(&mut buf)?;
+                    // Pretty-print XML files for readability
+                    if out_path.extension().is_some_and(|e| e == "xml" || e == "rels") {
+                        if let Ok(text) = String::from_utf8(buf.clone()) {
+                            if let Ok(formatted) = pretty_print_xml(&text) {
+                                std::fs::write(&out_path, formatted)?;
+                                continue;
+                            }
+                        }
+                    }
+                    std::fs::write(&out_path, buf)?;
+                }
+            }
+            eprintln!("Done: {} files extracted", archive.len());
+        }
+        Commands::PptxPack { input_dir, output } => {
+            use std::io::{Read as IoRead, Write as IoWrite};
+            eprintln!("Packing {} → {}", input_dir.display(), output.display());
+            if let Some(parent) = output.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            let file = std::fs::File::create(&output)?;
+            let mut zip = zip::ZipWriter::new(file);
+            let options = zip::write::SimpleFileOptions::default()
+                .compression_method(zip::CompressionMethod::Deflated);
+            let mut count = 0u32;
+            for entry in walkdir::WalkDir::new(&input_dir).into_iter().filter_map(|e| e.ok()) {
+                let path = entry.path();
+                if !path.is_file() {
+                    continue;
+                }
+                let rel = path.strip_prefix(&input_dir)?;
+                let name = rel.to_string_lossy().to_string();
+                let mut buf = Vec::new();
+                std::fs::File::open(path)?.read_to_end(&mut buf)?;
+                // Condense XML files (remove pretty-print whitespace)
+                if path.extension().is_some_and(|e| e == "xml" || e == "rels") {
+                    if let Ok(text) = String::from_utf8(buf.clone()) {
+                        if let Ok(condensed) = condense_xml(&text) {
+                            zip.start_file(&name, options)?;
+                            zip.write_all(condensed.as_bytes())?;
+                            count += 1;
+                            continue;
+                        }
+                    }
+                }
+                zip.start_file(&name, options)?;
+                zip.write_all(&buf)?;
+                count += 1;
+            }
+            zip.finish()?;
+            eprintln!("Done: {} files packed", count);
+        }
     }
 
     Ok(())
+}
+
+/// Pretty-print XML for readability (used by pptx-unpack).
+fn pretty_print_xml(xml: &str) -> Result<String> {
+    // Simple indent-based pretty printer for XML
+    let mut result = String::with_capacity(xml.len() * 2);
+    let mut depth: i32 = 0;
+    let mut in_tag = false;
+    let mut tag_buf = String::new();
+    let mut text_buf = String::new();
+    let mut prev_was_close = false;
+
+    for ch in xml.chars() {
+        match ch {
+            '<' => {
+                if !text_buf.trim().is_empty() {
+                    result.push_str(text_buf.trim());
+                }
+                text_buf.clear();
+                in_tag = true;
+                tag_buf.clear();
+                tag_buf.push(ch);
+            }
+            '>' => {
+                tag_buf.push(ch);
+                in_tag = false;
+                let is_close = tag_buf.starts_with("</");
+                let is_self_close = tag_buf.ends_with("/>");
+                let is_decl = tag_buf.starts_with("<?");
+
+                if is_close {
+                    depth -= 1;
+                }
+                if !prev_was_close || is_close {
+                    if !result.is_empty() && !result.ends_with('\n') {
+                        result.push('\n');
+                    }
+                    for _ in 0..depth.max(0) {
+                        result.push_str("  ");
+                    }
+                }
+                result.push_str(&tag_buf);
+                prev_was_close = is_close;
+
+                if !is_close && !is_self_close && !is_decl {
+                    depth += 1;
+                }
+                tag_buf.clear();
+            }
+            _ => {
+                if in_tag {
+                    tag_buf.push(ch);
+                } else {
+                    text_buf.push(ch);
+                }
+            }
+        }
+    }
+    Ok(result)
+}
+
+/// Condense XML by removing pretty-print whitespace (used by pptx-pack).
+fn condense_xml(xml: &str) -> Result<String> {
+    let mut result = String::with_capacity(xml.len());
+    let mut in_tag = false;
+    let mut in_preserve = false; // Inside a text element like <w:t> or <a:t>
+    let mut prev_was_gt = false;
+
+    for ch in xml.chars() {
+        match ch {
+            '<' => {
+                in_tag = true;
+                result.push(ch);
+                prev_was_gt = false;
+            }
+            '>' => {
+                in_tag = false;
+                result.push(ch);
+                prev_was_gt = true;
+                // Check if we just entered a text-preserving element
+                let last_tag: String = result.chars().rev().take_while(|&c| c != '<').collect::<String>().chars().rev().collect();
+                if last_tag.contains(":t>") || last_tag.contains(":t ") {
+                    in_preserve = !last_tag.starts_with('/');
+                }
+            }
+            '\n' | '\r' => {
+                if in_tag || in_preserve {
+                    result.push(ch);
+                }
+                // Skip newlines between tags
+            }
+            ' ' | '\t' => {
+                if in_tag || in_preserve {
+                    result.push(ch);
+                } else if prev_was_gt {
+                    // Skip indentation whitespace between tags
+                } else {
+                    result.push(ch);
+                }
+            }
+            _ => {
+                result.push(ch);
+                prev_was_gt = false;
+            }
+        }
+    }
+    Ok(result)
 }

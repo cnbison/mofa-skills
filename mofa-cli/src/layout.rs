@@ -776,3 +776,15 @@ fn dedup_ocr_blocks(blocks: Vec<crate::deepseek_ocr::OcrBlock>) -> Vec<crate::de
 pub const NO_TEXT_INSTRUCTION: &str = "\n\nCRITICAL: DO NOT render any text, words, labels, \
     numbers, or letters anywhere on the image. The image must be purely visual with no readable \
     content whatsoever. Leave clean space where text would normally appear.";
+
+/// Anti-leak rules appended to ALL image generation prompts.
+/// Prevents Gemini from rendering formatting hints (font sizes, hex colors, CSS notation)
+/// as literal text in the generated image.
+pub const ANTI_LEAK_RULES: &str = r#"
+
+ANTI-LEAK RULES (CRITICAL — follow exactly):
+1. NO parenthetical formatting near content text — never write "(28pt, bold, #C7000B)" next to text content
+2. Content text goes in quotes, layout/formatting instructions go OUTSIDE quotes
+3. Describe formatting in natural language: "large bold white title" NOT "title (24pt, bold, #FFFFFF)"
+4. NO hex color codes, font sizes in pt/px, or CSS-like notation adjacent to content text
+5. DO NOT include any page numbers or slide numbers in the image"#;

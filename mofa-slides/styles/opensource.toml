@@ -35,6 +35,7 @@ ALL diagrams use sophisticated MONOCHROME WIREFRAME SKETCH illustration:
 The light purple gradient background should be VISIBLE — cards are white so they contrast against the soft lavender background. The overall color feeling is elegant purple/lavender.
 
 CRITICAL: Premium consulting deck aesthetic (McKinsey / Bain style) with hand-drawn concept sketches — intellectual, sophisticated, monochrome diagrams on elegant light purple background.
+
 """
 
 [variants.data]
@@ -53,6 +54,7 @@ TITLE RULES:
 DATA-DENSE SLIDE: This slide contains dense data tables or comparison matrices. PRIORITIZE data presentation clarity above all else. Reduce or remove decorative sketch elements. Use clean table layouts with maximum readability. Data > decoration. Tables should have clear headers, aligned columns, generous spacing, and alternating subtle row shading for readability. Only keep minimal wireframe accents that aid comprehension (small icons in table cells OK), never at the expense of data legibility.
 
 Premium consulting deck aesthetic — clean, intellectual, data-forward.
+
 """
 
 [variants.cover]
@@ -68,5 +70,6 @@ TYPOGRAPHY: Manrope font (geometric modern sans-serif) for English. Noto Sans SC
 The LEFT 40% of the slide should be relatively clear for text content. The whale sketch occupies the RIGHT 60%.
 
 Premium, dramatic, cinematic but still intellectual and clean.
+
 """
 

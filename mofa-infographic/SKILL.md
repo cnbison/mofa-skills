@@ -93,7 +93,7 @@ Each section takes ~15-30 seconds to generate. Total time depends on section cou
 - **Keep sections under 8** for a single call
 - **Increase concurrency**: `"concurrency": 5` (default: 3)
 - **Use smaller images**: Omit `image_size` or use `"1K"` instead of `"2K"`/`"4K"`
-- **Don't use `--api batch`** in crew.rs tool calls — batch can take 5-30 min
+- **Don't use `--api batch`** in octos tool calls — batch can take 5-30 min
 
 If a generation times out, **cached sections are preserved** — rerun and only missing sections will be regenerated.
 

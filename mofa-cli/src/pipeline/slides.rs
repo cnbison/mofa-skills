@@ -5,8 +5,8 @@ use crate::dashscope::DashscopeClient;
 use crate::deepseek_ocr::DeepSeekOcrClient;
 use crate::gemini::{BatchImageRequest, GeminiClient};
 use crate::layout::{
-    extract_text_layout, extract_text_layout_deepseek, refine_text_layout, NO_TEXT_INSTRUCTION, SH,
-    SW,
+    extract_text_layout, extract_text_layout_deepseek, refine_text_layout, ANTI_LEAK_RULES,
+    NO_TEXT_INSTRUCTION, SH, SW,
 };
 use crate::pptx::{self, ImageOverlay, SlideData, TextOverlay};
 use crate::style::Style;
@@ -120,7 +120,11 @@ fn run_slides_sync(
                     .map(|imgs| imgs.iter().map(|p| Path::new(p.as_str())).collect())
                     .unwrap_or_default();
 
-                if slide.auto_layout {
+                // VQA-first: if texts are provided OR auto_layout is on,
+                // generate WITH text, extract layout, remove text, overlay.
+                let use_vqa = slide.auto_layout;
+
+                if use_vqa {
                     let ref_file = slide_dir.join(format!("slide-{padded}-ref.png"));
                     let ref_ready = if let Some(ref src) = slide.source_image {
                         let src_path = Path::new(src);
@@ -130,7 +134,7 @@ fn run_slides_sync(
                             false
                         }
                     } else {
-                        let full_prompt = format!("{prefix}\n\n{}", slide.prompt);
+                        let full_prompt = format!("{prefix}\n\n{}{ANTI_LEAK_RULES}", slide.prompt);
                         let ref_size = ref_image_size.or(image_size);
                         generate_image(
                             gemini, dashscope, &full_prompt, &ref_file, ref_size,
@@ -160,8 +164,11 @@ fn run_slides_sync(
                         ref_paths.lock().unwrap()[idx] = Some(ref_file);
                     }
                 } else {
-                    let mut full_prompt = format!("{prefix}\n\n{}", slide.prompt);
+                    // Non-VQA mode: image-only OR clean background + manual text overlays
+                    let mut full_prompt = format!("{prefix}\n\n{}{ANTI_LEAK_RULES}", slide.prompt);
                     if slide.texts.is_some() {
+                        // Clean background mode (like cc-ppt): generate without text,
+                        // user-provided texts will be overlaid as native PowerPoint boxes
                         full_prompt.push_str(NO_TEXT_INSTRUCTION);
                     }
                     let out_path = slide_dir.join(format!("slide-{padded}.png"));
@@ -177,9 +184,11 @@ fn run_slides_sync(
     let direct_paths = direct_paths.lock().unwrap().clone();
     let mut final_paths: Vec<Option<PathBuf>> = vec![None; total];
 
+    // Phase 3: Remove text from ref images (VQA-first slides need clean backgrounds)
     #[allow(clippy::needless_range_loop)]
     for idx in 0..total {
-        if !slides[idx].auto_layout {
+        let use_vqa = slides[idx].auto_layout;
+        if !use_vqa {
             final_paths[idx] = direct_paths[idx].clone();
             continue;
         }
@@ -199,10 +208,15 @@ fn run_slides_sync(
     let slide_data: Vec<SlideData> = (0..total)
         .map(|i| {
             let image_path = final_paths[i].as_ref().map(|p| p.to_string_lossy().to_string());
-            let texts = if slides[i].auto_layout {
+            // VQA-first: user-provided texts take priority, fall back to VQA-extracted
+            let texts = if slides[i].texts.is_some() {
+                // User provided explicit text overlays — use those
+                slides[i].texts.clone().unwrap_or_default()
+            } else if slides[i].auto_layout {
+                // Auto-layout — use VQA-extracted texts
                 extracted[i].clone().unwrap_or_default()
             } else {
-                slides[i].texts.clone().unwrap_or_default()
+                Vec::new()
             };
             let images = slides[i].overlay_images.clone().unwrap_or_default();
             SlideData { image_path, texts, images }
@@ -286,11 +300,14 @@ pub fn run(
                 .map(|imgs| imgs.iter().map(PathBuf::from).collect())
                 .unwrap_or_default();
 
-            if slide.auto_layout {
+            // VQA-first: texts provided or auto_layout → generate WITH text
+            let use_vqa = slide.auto_layout;
+
+            if use_vqa {
                 if slide.source_image.is_some() {
                     continue; // source_image slides don't need generation
                 }
-                let full_prompt = format!("{prefix}\n\n{}", slide.prompt);
+                let full_prompt = format!("{prefix}\n\n{}{ANTI_LEAK_RULES}", slide.prompt);
                 let ref_size = ref_image_size.or(image_size);
                 batch_requests.push((idx, BatchImageRequest {
                     key: format!("slide-{padded}-ref"),
@@ -302,7 +319,7 @@ pub fn run(
                     model: model_name,
                 }, true));
             } else {
-                let mut full_prompt = format!("{prefix}\n\n{}", slide.prompt);
+                let mut full_prompt = format!("{prefix}\n\n{}{ANTI_LEAK_RULES}", slide.prompt);
                 if slide.texts.is_some() {
                     full_prompt.push_str(NO_TEXT_INSTRUCTION);
                 }
@@ -370,10 +387,11 @@ pub fn run(
             }
         }
 
-        // Phase 2: Extract text from ref images (sequential)
+        // Phase 2: Extract text from ref images (sequential, VQA-first)
         let mut extracted_texts_vec: Vec<Option<Vec<TextOverlay>>> = vec![None; total];
         for idx in 0..total {
-            if !slides[idx].auto_layout {
+            let use_vqa = slides[idx].auto_layout;
+            if !use_vqa {
                 continue;
             }
             let Some(ref ref_path) = ref_paths_vec[idx] else { continue };
@@ -411,10 +429,11 @@ pub fn run(
             }
         }
 
-        // Phase 3: Remove text with Qwen-Edit
+        // Phase 3: Remove text with Qwen-Edit (VQA-first slides)
         let mut final_paths: Vec<Option<PathBuf>> = vec![None; total];
         for idx in 0..total {
-            if !slides[idx].auto_layout {
+            let use_vqa = slides[idx].auto_layout;
+            if !use_vqa {
                 final_paths[idx] = direct_paths_vec[idx].clone();
                 continue;
             }
@@ -441,10 +460,13 @@ pub fn run(
         let slide_data: Vec<SlideData> = (0..total)
             .map(|i| {
                 let image_path = final_paths[i].as_ref().map(|p| p.to_string_lossy().to_string());
-                let texts = if slides[i].auto_layout {
+                // VQA-first: user-provided texts take priority, fall back to VQA-extracted
+                let texts = if slides[i].texts.is_some() {
+                    slides[i].texts.clone().unwrap_or_default()
+                } else if slides[i].auto_layout {
                     extracted_texts_vec[i].clone().unwrap_or_default()
                 } else {
-                    slides[i].texts.clone().unwrap_or_default()
+                    Vec::new()
                 };
                 let images = slides[i].overlay_images.clone().unwrap_or_default();
                 SlideData { image_path, texts, images }
@@ -495,12 +517,15 @@ pub fn run(
                     .map(|imgs| imgs.iter().map(|p| Path::new(p.as_str())).collect())
                     .unwrap_or_default();
 
-                if slide.auto_layout {
+                // VQA-first: if texts are provided OR auto_layout is on,
+                // generate WITH text, extract layout, remove text, overlay.
+                let use_vqa = slide.auto_layout;
+
+                if use_vqa {
                     // Phase 1: Get reference image (generate or use source_image)
                     let ref_file = slide_dir.join(format!("slide-{padded}-ref.png"));
 
                     let ref_ready = if let Some(ref src) = slide.source_image {
-                        // Use existing image — copy to ref_file location
                         let src_path = Path::new(src);
                         if src_path.exists() {
                             if let Err(e) = std::fs::copy(src_path, &ref_file) {
@@ -515,8 +540,8 @@ pub fn run(
                             false
                         }
                     } else {
-                        // Generate WITH text (reference image)
-                        let full_prompt = format!("{prefix}\n\n{}", slide.prompt);
+                        // Generate WITH text (reference image) + anti-leak rules
+                        let full_prompt = format!("{prefix}\n\n{}{ANTI_LEAK_RULES}", slide.prompt);
                         let ref_size = ref_image_size.or(image_size);
                         generate_image(
                             gemini, dashscope, &full_prompt, &ref_file, ref_size,
@@ -526,8 +551,6 @@ pub fn run(
 
                     if ref_ready {
                         // Phase 2: Extract text positions + styling
-                        // OCR+VQA mode: OCR for precise bounding boxes, VQA for font styling
-                        // VQA-only mode: Gemini VQA for both positions and styling (fallback)
                         let extraction_result = if let Some(ref ocr) = ocr_client {
                             match extract_text_layout_deepseek(
                                 ocr, gemini, &ref_file, SW, SH, vision_model,
@@ -537,7 +560,7 @@ pub fn run(
                                         "Slide {}: OCR extracted {} text blocks",
                                         idx + 1, texts.len()
                                     );
-                                    Ok((texts, true)) // true = used OCR (skip refinement)
+                                    Ok((texts, true))
                                 }
                                 Ok(_) => {
                                     eprintln!(
@@ -571,7 +594,6 @@ pub fn run(
                                     idx + 1, texts.len(),
                                     if used_ocr { "OCR" } else { "VQA" }
                                 );
-                                // Only refine if VQA was used (OCR positions are precise)
                                 let texts = if !used_ocr {
                                     match refine_text_layout(
                                         gemini, &ref_file, &texts, SW, SH, vision_model,
@@ -603,12 +625,8 @@ pub fn run(
                         ref_paths.lock().unwrap()[idx] = Some(ref_file);
                     }
                 } else {
-                    // Standard flow: baked text or manual overlays
-                    let mut full_prompt = format!("{prefix}\n\n{}", slide.prompt);
-                    if slide.texts.is_some() {
-                        full_prompt.push_str(NO_TEXT_INSTRUCTION);
-                    }
-
+                    // Pure image mode — no text overlays
+                    let full_prompt = format!("{prefix}\n\n{}{ANTI_LEAK_RULES}", slide.prompt);
                     let out_path = slide_dir.join(format!("slide-{padded}.png"));
                     if let Some(p) = generate_image(
                         gemini, dashscope, &full_prompt, &out_path, image_size,
@@ -626,9 +644,11 @@ pub fn run(
     let direct_paths = direct_paths.lock().unwrap().clone();
     let mut final_paths: Vec<Option<PathBuf>> = vec![None; total];
 
+    // Phase 3: Remove text from VQA-first slides
     #[allow(clippy::needless_range_loop)]
     for idx in 0..total {
-        if !slides[idx].auto_layout {
+        let use_vqa = slides[idx].auto_layout;
+        if !use_vqa {
             final_paths[idx] = direct_paths[idx].clone();
             continue;
         }
@@ -663,10 +683,13 @@ pub fn run(
     let slide_data: Vec<SlideData> = (0..total)
         .map(|i| {
             let image_path = final_paths[i].as_ref().map(|p| p.to_string_lossy().to_string());
-            let texts = if slides[i].auto_layout {
+            // VQA-first: user-provided texts take priority, fall back to VQA-extracted
+            let texts = if slides[i].texts.is_some() {
+                slides[i].texts.clone().unwrap_or_default()
+            } else if slides[i].auto_layout {
                 extracted[i].clone().unwrap_or_default()
             } else {
-                slides[i].texts.clone().unwrap_or_default()
+                Vec::new()
             };
             let images = slides[i].overlay_images.clone().unwrap_or_default();
             SlideData { image_path, texts, images }

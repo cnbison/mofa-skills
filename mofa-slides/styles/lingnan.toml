@@ -43,6 +43,7 @@ LAYOUT:
 - The painting elements frame the content rather than sitting in boxes
 
 MOOD: Lush, warm, alive — the subtropical vitality of Guangdong. Bold yet elegant, vibrant yet refined.
+
 """
 
 [variants.cover]
@@ -66,6 +67,7 @@ TITLE AREA: Left or bottom portion kept clearer for text. Title in dark ink or d
 Red seal stamp near the painting signature area.
 
 MOOD: Like walking into a gallery of Lingnan masters — Gao Jianfu (高剑父), Zhao Shao'ang (赵少昂). Bold, colorful, alive.
+
 """
 
 [variants.data]
@@ -91,6 +93,7 @@ DECORATIVE ELEMENTS (RESTRAINED):
 Red seal stamp in corner.
 
 PRIORITY: Data clarity first. The Lingnan character comes through in the warm color palette, brush-stroke borders, and small corner illustrations.
+
 """
 
 [variants.warm]
@@ -109,4 +112,5 @@ CONTENT AREAS: White or near-white translucent panels (#FFFFFF at 85% opacity) f
 TYPOGRAPHY: Same as normal variant — classical Chinese fonts, serif English, warm charcoal text.
 
 MOOD: Dreamy, poetic — like looking at Guangzhou through the morning mist rising from the Pearl River.
+
 """

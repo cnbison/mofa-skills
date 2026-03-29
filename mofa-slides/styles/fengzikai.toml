@@ -37,6 +37,7 @@ TYPOGRAPHY:
 LAYOUT: Asymmetric and organic. NOT a rigid grid. Content flows like a painting composition — the eye moves naturally from text to illustration to white space. Think of a traditional Chinese painting album page (册页).
 
 MOOD: Warm, nostalgic, poetic, childlike innocence, the beauty of ordinary moments.
+
 """
 
 [variants.cover]
@@ -57,6 +58,7 @@ A red seal stamp (印章) near the illustration — small, square, vermillion (#
 GENEROUS WHITE SPACE — the cover breathes. Less is more.
 
 MOOD: Like opening a cherished book of paintings. Warm, inviting, timeless.
+
 """
 
 [variants.data]
@@ -80,4 +82,5 @@ MINIMAL DECORATION: One small Feng Zikai-style sketch element in a corner — a 
 Red seal stamp in bottom corner.
 
 PRIORITY: Data readability > artistic decoration. But the warmth and ink-brush character must still be present.
+
 """

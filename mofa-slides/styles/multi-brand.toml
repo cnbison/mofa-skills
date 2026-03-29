@@ -30,6 +30,7 @@ ALL diagrams use sophisticated WIREFRAME SKETCH illustration in ORANGE tones:
 - Generous white space inside each card — diagrams breathe, never cramped
 
 CRITICAL: Premium consulting deck aesthetic (McKinsey / BCG quality) with hand-drawn wireframe concept sketches in orange on dark navy. Apple Keynote level whitespace and typography. Intellectual, sophisticated, dramatic.
+
 """
 
 [variants.amazon_light]
@@ -53,6 +54,7 @@ ALL diagrams use sophisticated WIREFRAME SKETCH illustration:
 - Generous whitespace — Apple Keynote level spacing
 
 Premium consulting aesthetic with orange accent wireframes on white. Clean, intellectual, data-forward.
+
 """
 
 [variants.google]
@@ -76,6 +78,7 @@ ALL diagrams use sophisticated WIREFRAME SKETCH illustration in Google's four co
 - Generous whitespace — Apple Keynote level
 
 Premium consulting aesthetic with Google's four-color wireframe sketches on light gray. Fresh, intellectual, optimistic.
+
 """
 
 [variants.microsoft]
@@ -98,6 +101,7 @@ ALL diagrams use sophisticated WIREFRAME SKETCH illustration in Microsoft blue t
 - Generous whitespace — Apple Keynote level
 
 Premium enterprise consulting aesthetic with blue wireframe sketches. Structured, trustworthy, enterprise-grade.
+
 """
 
 [variants.nvidia_dark]
@@ -121,6 +125,7 @@ ALL diagrams use sophisticated WIREFRAME SKETCH illustration in NVIDIA green:
 - Generous whitespace — Apple Keynote level, lots of black breathing room
 
 Premium hardware/silicon consulting aesthetic with green wireframe on black. Dramatic, technical, powerful.
+
 """
 
 [variants.nvidia_light]
@@ -142,6 +147,7 @@ Wireframe sketches in dark gray with NVIDIA green (#76B900) accent highlights.
 - Generous whitespace — Apple Keynote level
 
 Premium consulting aesthetic with green accent wireframes on white.
+
 """
 
 [variants.overview]
@@ -166,6 +172,7 @@ Use each company's brand color for their respective sections:
 - Generous whitespace — Apple Keynote level
 
 Premium multi-brand consulting aesthetic. Clean, comparative, authoritative.
+
 """
 
 [variants.cover]
@@ -181,6 +188,7 @@ TYPOGRAPHY: Noto Sans SC font for ALL text. ALL text in Chinese ONLY — English
 - ALL other text: OMIT — no subtitle, no metadata, no date. ONLY the main title.
 
 The LEFT 50% should be clear for the title. Minimal, elegant, dramatic.
+
 """
 
 [variants.tesla_dark]
@@ -203,6 +211,7 @@ ALL diagrams use sophisticated WIREFRAME SKETCH illustration in TESLA RED:
 - Generous whitespace — Apple Keynote level, lots of dark breathing room
 
 Premium automotive-tech consulting aesthetic with red wireframe on dark. Sleek, futuristic, powerful.
+
 """
 
 [variants.tesla_light]
@@ -224,6 +233,7 @@ Wireframe sketches in dark gray with Tesla red (#CC0000) accent highlights.
 - Generous whitespace — Apple Keynote level
 
 Premium automotive consulting aesthetic with red accent wireframes on white.
+
 """
 
 [variants.spacex]
@@ -246,5 +256,6 @@ ALL diagrams use sophisticated WIREFRAME SKETCH illustration in ICE BLUE and WHI
 - Generous whitespace — vast cosmic emptiness between elements
 
 Premium aerospace-tech aesthetic with ice blue wireframe on space black. Cosmic, ambitious, infinite.
+
 """
 

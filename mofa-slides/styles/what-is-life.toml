@@ -21,6 +21,7 @@ TYPOGRAPHY: Noto Sans SC font for ALL text. ALL text in Chinese ONLY — absolut
 - Subtitle: font-weight 300, color #4A3A6E (muted purple), 20-24pt
 
 The LEFT 50% should be clear for the title. Minimal, elegant, dramatic.
+
 """
 
 [variants.physics_dark]
@@ -45,6 +46,7 @@ ALL diagrams use sophisticated WIREFRAME SKETCH illustration in CYAN/TEAL tones:
 - Generous white space inside each card — diagrams breathe, never cramped
 
 CRITICAL: Premium consulting deck aesthetic (McKinsey / BCG quality) with hand-drawn wireframe concept sketches in cyan on dark navy. Apple Keynote level whitespace and typography. Intellectual, sophisticated, scientific.
+
 """
 
 [variants.biology_light]
@@ -68,6 +70,7 @@ ALL diagrams use sophisticated WIREFRAME SKETCH illustration in TEAL/GREEN tones
 - Generous whitespace — Apple Keynote level spacing
 
 Premium consulting aesthetic with teal/green wireframe sketches on white. Clean, intellectual, data-forward.
+
 """
 
 [variants.overview]
@@ -92,5 +95,6 @@ Use thematic colors for different science domains:
 - Generous whitespace — Apple Keynote level
 
 Premium multi-domain scientific consulting aesthetic. Clean, comparative, authoritative.
+
 """
 

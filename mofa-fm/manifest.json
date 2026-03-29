@@ -6,17 +6,25 @@
   "timeout_secs": 300,
   "requires_network": true,
   "requires": {
-    "bins": ["ominix-api"],
-    "os": ["darwin"]
+    "bins": [
+      "ominix-api"
+    ],
+    "os": [
+      "darwin"
+    ]
   },
   "install": [
     {
       "id": "ominix-api",
       "kind": "cargo",
       "crate": "ominix-api",
-      "bins": ["ominix-api"],
+      "bins": [
+        "ominix-api"
+      ],
       "label": "OminiX API server (Apple Silicon TTS inference)",
-      "os": ["darwin"]
+      "os": [
+        "darwin"
+      ]
     }
   ],
   "dependencies": {
@@ -24,13 +32,18 @@
       "version": "1.0.0",
       "repo": "https://github.com/OminiX-ai/OminiX-MLX",
       "crate": "ominix-api",
-      "features": ["tts"],
+      "features": [
+        "tts"
+      ],
       "description": "Local inference server for Qwen3 TTS with voice cloning on Apple Silicon"
     },
     "ominix-mlx": {
       "version": "1.0.0",
       "repo": "https://github.com/OminiX-ai/OminiX-MLX",
-      "crates": ["qwen3-tts-mlx", "mlx-rs-core"],
+      "crates": [
+        "qwen3-tts-mlx",
+        "mlx-rs-core"
+      ],
       "description": "MLX inference runtime for Qwen3-TTS on Apple Silicon"
     },
     "models": {
@@ -63,14 +76,16 @@
           },
           "prompt": {
             "type": "string",
-            "description": "Style/emotion prompt to control how the voice speaks. Works with both preset and cloned voices. Verified Chinese prompts: excited='用兴奋激动的语气说话，充满热情和活力', sad='用悲伤失望的语气说话，声音低沉，语速缓慢', cheerful='用开朗愉快的语气说话，声音明亮上扬，节奏轻快', shout='用大声喊叫的方式说话，声音高亢有力，语速快', sarcastic='用讽刺嘲讽的语气说话，语调阴阳怪气，拖长尾音', soft='用温柔轻柔的语气说话', panic='用惊慌恐惧的语气说话，声音颤抖，语速急促'. Custom prompts also supported."
+            "description": "Style/emotion prompt to control how the voice speaks. Works with both preset and cloned voices. Verified Chinese prompts (best with Chinese speakers like vivian, serena): excited='\u7528\u5174\u594b\u6fc0\u52a8\u7684\u8bed\u6c14\u8bf4\u8bdd\uff0c\u5145\u6ee1\u70ed\u60c5\u548c\u6d3b\u529b', sad='\u7528\u60b2\u4f24\u5931\u671b\u7684\u8bed\u6c14\u8bf4\u8bdd\uff0c\u58f0\u97f3\u4f4e\u6c89\uff0c\u8bed\u901f\u7f13\u6162', cheerful='\u7528\u5f00\u6717\u6109\u5feb\u7684\u8bed\u6c14\u8bf4\u8bdd\uff0c\u58f0\u97f3\u660e\u4eae\u4e0a\u626c\uff0c\u8282\u594f\u8f7b\u5feb', shout='\u7528\u5927\u58f0\u558a\u53eb\u7684\u65b9\u5f0f\u8bf4\u8bdd\uff0c\u58f0\u97f3\u9ad8\u4ea2\u6709\u529b\uff0c\u8bed\u901f\u5feb', sarcastic='\u7528\u8bbd\u523a\u5632\u8bbd\u7684\u8bed\u6c14\u8bf4\u8bdd\uff0c\u8bed\u8c03\u9634\u9633\u602a\u6c14\uff0c\u62d6\u957f\u5c3e\u97f3', soft='\u7528\u6e29\u67d4\u8f7b\u67d4\u7684\u8bed\u6c14\u8bf4\u8bdd', panic='\u7528\u60ca\u614c\u6050\u60e7\u7684\u8bed\u6c14\u8bf4\u8bdd\uff0c\u58f0\u97f3\u98a4\u6296\uff0c\u8bed\u901f\u6025\u4fc3'. English prompts (best with English speakers like ryan, aiden): excited='Speak with excitement and enthusiasm, full of energy', sad='Speak in a sad, disappointed tone, voice low and slow', cheerful='Speak cheerfully with a bright, upbeat voice', shout='Shout loudly with a powerful, high-pitched voice', sarcastic='Speak sarcastically with a mocking, drawn-out tone', soft='Speak gently and softly', panic='Speak in a panicked, trembling voice, fast and breathless'. Custom free-form prompts also supported \u2014 include emotion + timbre + pace descriptors for strongest control."
           },
           "speed": {
             "type": "number",
             "description": "Speed factor: >1.0 = faster, <1.0 = slower. Range 0.5-2.0. Default: 1.0"
           }
         },
-        "required": ["text"]
+        "required": [
+          "text"
+        ]
       }
     },
     {
@@ -88,7 +103,10 @@
             "description": "Absolute path to the audio file to use as voice reference"
           }
         },
-        "required": ["name", "audio_path"]
+        "required": [
+          "name",
+          "audio_path"
+        ]
       }
     },
     {
@@ -110,8 +128,16 @@
             "description": "Name of the custom voice to delete"
           }
         },
-        "required": ["name"]
+        "required": [
+          "name"
+        ]
       }
     }
-  ]
+  ],
+  "binaries": {
+    "darwin-aarch64": {
+      "url": "https://github.com/mofa-org/mofa-skills/releases/download/v0.3.0/mofa-fm-darwin-aarch64.tar.gz",
+      "sha256": "1beb2d21b9ed70d70623a2542783d3f8fdb531df352814a4a03daaa077e23470"
+    }
+  }
 }

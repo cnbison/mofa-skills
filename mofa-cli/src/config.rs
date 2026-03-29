@@ -161,9 +161,9 @@ pub fn find_mofa_root() -> PathBuf {
             }
         }
     }
-    // Fallback: ~/.crew/skills/mofa parent
+    // Fallback: ~/.octos/skills/mofa parent
     if let Some(home) = dirs_fallback() {
-        let skills = home.join(".crew").join("skills").join("mofa");
+        let skills = home.join(".octos").join("skills").join("mofa");
         if skills.join("config.json").exists() {
             return skills.parent().unwrap().parent().unwrap().to_path_buf();
         }

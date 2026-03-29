@@ -38,6 +38,7 @@ TYPOGRAPHY: Clean modern sans-serif font (Helvetica Neue, Inter, or Noto Sans SC
 COMPOSITION: Centered or slightly off-center. The character floats in white space. Text below. Everything breathes. Mathematical precision in spacing — every millimeter is intentional. Think: Muji catalog meets character design.
 
 CRITICAL: This must feel like a premium brand's holiday card — the kind of card that a design studio sends to clients. The simplicity is the luxury. The faceless character makes the viewer project their own emotions. Less is everything.
+
 """
 
 [variants.greeting]
@@ -62,6 +63,7 @@ TYPOGRAPHY (the hero):
 COMPOSITION: Text-dominant. Small character as visual anchor. Massive white space. The card should feel like it has MORE empty space than content — that's the point.
 
 CRITICAL: The text carries the emotion. The character provides brand identity. The white space provides elegance. Nothing competes for attention.
+
 """
 
 [variants.scene]
@@ -87,6 +89,7 @@ TYPOGRAPHY: Minimal text — 2-6 characters or a short phrase. Clean sans-serif.
 COMPOSITION: The character is small in the scene (about 20-25% of card height), giving a sense of quiet solitude in a vast white space. The scene element provides context. Together they tell a small, quiet story.
 
 CRITICAL: This is poetic minimalism — a haiku in visual form. The egg-head character standing alone under a branch with red berries, in a sea of white, says more than a full illustration ever could. Restraint is the entire point.
+
 """
 
 [variants.festive]
@@ -114,5 +117,6 @@ DECORATIVE ELEMENTS (1-2 only, high contrast):
 COMPOSITION: Text dominates the center. Decorative elements at corners/edges create visual frame. Logo area at the bottom center must be left clear. Bold, festive, but still restrained and elegant — luxury Chinese New Year card, not a supermarket flyer.
 
 CRITICAL: The red is confident. The gold is luminous. The white/green accents are precise. This is Relevant's festive face — the same design intelligence applied to celebration. Less is still more, even in red and gold.
+
 """
 

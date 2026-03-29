@@ -2,7 +2,7 @@
 name: mofa-fm-api
 description: "MoFA FM Podcast Platform API client — browse shows/episodes, search podcasts, manage creator content, trending topics. Triggers: mofa.fm, 播客, podcast, fm api, 热搜"
 requires_bins: python3
-crew_only: true
+octos_only: true
 always: false
 ---
 

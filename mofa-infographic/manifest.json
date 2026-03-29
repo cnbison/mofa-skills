@@ -4,16 +4,8 @@
   "timeout_secs": 1800,
   "binaries": {
     "darwin-aarch64": {
-      "url": "https://github.com/mofa-org/mofa-skills/releases/download/v0.2.0/mofa-darwin-aarch64.tar.gz",
-      "sha256": "c02525ab00c4b81c95b87afb9a2018c81ced5af8eab9b25840a0f351a5e452e5"
-    },
-    "darwin-x86_64": {
-      "url": "https://github.com/mofa-org/mofa-skills/releases/download/v0.2.0/mofa-darwin-x86_64.tar.gz",
-      "sha256": "18cbcc13722440f174943a629ebe67ed6e6aa529848984637aeeca8821d1155a"
-    },
-    "linux-x86_64": {
-      "url": "https://github.com/mofa-org/mofa-skills/releases/download/v0.2.0/mofa-linux-x86_64.tar.gz",
-      "sha256": "458c1da00cda7313b19abab9b80038e0b1423fa28e3ab241e2a07acc70d14048"
+      "url": "https://github.com/mofa-org/mofa-skills/releases/download/v0.3.0/mofa-darwin-aarch64.tar.gz",
+      "sha256": "aa473654b93c98cfd2b49a4222458a6332b4774ccb2981ccf6191ba54227655c"
     }
   },
   "tools": [
@@ -29,24 +21,71 @@
             "items": {
               "type": "object",
               "properties": {
-                "prompt": { "type": "string", "description": "Section content description" },
-                "variant": { "type": "string", "description": "Style variant for this section (e.g. 'header', 'normal', 'footer'). Defaults to 'header' for first section, 'footer' for last, 'normal' for middle sections." },
-                "refine_prompt": { "type": "string", "description": "Optional Qwen-Edit instruction to refine this section after generation (e.g. 'increase contrast')" }
+                "prompt": {
+                  "type": "string",
+                  "description": "Section content description"
+                },
+                "variant": {
+                  "type": "string",
+                  "description": "Style variant for this section (e.g. 'header', 'normal', 'footer'). Defaults to 'header' for first section, 'footer' for last, 'normal' for middle sections."
+                },
+                "refine_prompt": {
+                  "type": "string",
+                  "description": "Optional Qwen-Edit instruction to refine this section after generation (e.g. 'increase contrast')"
+                }
               },
-              "required": ["prompt"]
+              "required": [
+                "prompt"
+              ]
             }
           },
-          "style": { "type": "string", "description": "Style template name (default: cyberpunk-neon)", "default": "cyberpunk-neon" },
-          "out": { "type": "string", "description": "Output PNG file path" },
-          "work_dir": { "type": "string", "description": "Working directory for section PNGs" },
-          "concurrency": { "type": "integer", "description": "Parallel generation limit (default: 3)" },
-          "image_size": { "type": "string", "description": "Image resolution passed to Gemini (e.g. '1024x1024')" },
-          "aspect": { "type": "string", "description": "Aspect ratio per section" },
-          "gutter": { "type": "integer", "description": "Gap between sections in pixels (default: 0)" },
-          "refine": { "type": "boolean", "description": "Refine sections with Qwen-Edit (requires DASHSCOPE_API_KEY)" },
-          "api": { "type": "string", "description": "API mode: rt (realtime, fast) or batch (50% cheaper, async)", "default": "rt", "enum": ["rt", "batch"] }
+          "style": {
+            "type": "string",
+            "description": "Style template name (default: cyberpunk-neon)",
+            "default": "cyberpunk-neon"
+          },
+          "out": {
+            "type": "string",
+            "description": "Output PNG file path"
+          },
+          "work_dir": {
+            "type": "string",
+            "description": "Working directory for section PNGs"
+          },
+          "concurrency": {
+            "type": "integer",
+            "description": "Parallel generation limit (default: 3)"
+          },
+          "image_size": {
+            "type": "string",
+            "description": "Image resolution passed to Gemini (e.g. '1024x1024')"
+          },
+          "aspect": {
+            "type": "string",
+            "description": "Aspect ratio per section"
+          },
+          "gutter": {
+            "type": "integer",
+            "description": "Gap between sections in pixels (default: 0)"
+          },
+          "refine": {
+            "type": "boolean",
+            "description": "Refine sections with Qwen-Edit (requires DASHSCOPE_API_KEY)"
+          },
+          "api": {
+            "type": "string",
+            "description": "API mode: rt (realtime, fast) or batch (50% cheaper, async)",
+            "default": "rt",
+            "enum": [
+              "rt",
+              "batch"
+            ]
+          }
         },
-        "required": ["sections", "out"]
+        "required": [
+          "sections",
+          "out"
+        ]
       }
     }
   ]

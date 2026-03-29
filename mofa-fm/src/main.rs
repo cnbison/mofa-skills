@@ -1,7 +1,7 @@
 //! MoFA FM: Voice management and TTS with custom voice cloning.
 //!
 //! Protocol: `./main <tool_name>` with JSON on stdin, JSON on stdout.
-//! Requires OMINIX_API_URL and CREW_DATA_DIR environment variables.
+//! Requires OMINIX_API_URL and OCTOS_DATA_DIR environment variables.
 
 use std::collections::BTreeMap;
 use std::io::Read;
@@ -68,10 +68,10 @@ fn voices_dir() -> PathBuf {
     if let Ok(dir) = std::env::var("OCTOS_VOICE_DIR") {
         return PathBuf::from(dir);
     }
-    // Fallback: $OCTOS_DATA_DIR/voices or /tmp/voices
+    // Match voice platform skill: $OCTOS_DATA_DIR/voice_profiles
     let data_dir = std::env::var("OCTOS_DATA_DIR")
         .unwrap_or_else(|_| "/tmp".to_string());
-    PathBuf::from(data_dir).join("voices")
+    PathBuf::from(data_dir).join("voice_profiles")
 }
 
 fn registry_path() -> PathBuf {
@@ -172,6 +172,33 @@ fn pcm_to_wav(pcm: &[u8], sample_rate: u32) -> Vec<u8> {
     wav
 }
 
+/// Try to convert WAV to MP3 using ffmpeg for smaller file size.
+/// Returns the MP3 path on success, or the original WAV path if ffmpeg is unavailable.
+fn try_convert_to_mp3(wav_path: &str) -> String {
+    let mp3_path = wav_path.replace(".wav", ".mp3");
+    let result = std::process::Command::new("ffmpeg")
+        .args([
+            "-y",
+            "-i",
+            wav_path,
+            "-codec:a",
+            "libmp3lame",
+            "-q:a",
+            "2",
+            &mp3_path,
+        ])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
+    match result {
+        Ok(status) if status.success() => {
+            let _ = std::fs::remove_file(wav_path);
+            mp3_path
+        }
+        _ => wav_path.to_string(),
+    }
+}
+
 /// Call TTS endpoint, handle both streaming PCM and WAV responses.
 fn fetch_tts_wav(
     client: &reqwest::blocking::Client,
@@ -217,8 +244,8 @@ fn fetch_tts_wav(
     Ok(pcm_to_wav(&bytes, 24000))
 }
 
-/// Minimum ominix-api version required (prompt + speed support).
-const MIN_OMINIX_VERSION: &str = "1.0.0";
+/// Minimum ominix-api version required for model-specific endpoints.
+const MIN_OMINIX_VERSION: &str = "0.1.0";
 
 fn check_health(client: &reqwest::blocking::Client, base_url: &str) -> Result<(), String> {
     match client
@@ -275,9 +302,11 @@ fn check_health(client: &reqwest::blocking::Client, base_url: &str) -> Result<()
 }
 
 /// Simple semver comparison: is `have` >= `need`?
+/// Strips build metadata (+hash) before comparing.
 fn version_gte(have: &str, need: &str) -> bool {
     let parse = |s: &str| -> Vec<u32> {
-        s.split('.').filter_map(|p| p.parse().ok()).collect()
+        let base = s.split('+').next().unwrap_or(s).split('-').next().unwrap_or(s);
+        base.split('.').filter_map(|p| p.parse().ok()).collect()
     };
     let h = parse(have);
     let n = parse(need);
@@ -382,6 +411,22 @@ fn handle_tts(input_json: &str) {
         reg.default_voice.unwrap_or_else(|| "vivian".to_string())
     });
 
+    // Validate: must be a known custom voice or a preset
+    if resolve_custom_voice(&voice_name).is_none() && !is_preset(&voice_name) {
+        let presets = PRESET_VOICES.join(", ");
+        let reg = load_registry();
+        let custom: Vec<&str> = reg.voices.keys().map(|s| s.as_str()).collect();
+        let custom_list = if custom.is_empty() {
+            String::new()
+        } else {
+            format!("\nCustom voices: {}", custom.join(", "))
+        };
+        fail(&format!(
+            "Unknown voice '{voice_name}'. Available presets: {presets}{custom_list}\n\
+             To use a custom voice, first save it with fm_voice_save."
+        ));
+    }
+
     let wav_bytes = if let Some(ref_path) = resolve_custom_voice(&voice_name) {
         // Custom voice → /v1/audio/tts/clone (multipart with raw WAV)
         let ref_bytes = match std::fs::read(&ref_path) {
@@ -401,6 +446,9 @@ fn handle_tts(input_json: &str) {
             );
         if let Some(speed) = input.speed {
             form = form.text("speed", speed.to_string());
+        }
+        if let Some(ref prompt) = input.prompt {
+            form = form.text("prompt", prompt.clone());
         }
         let endpoint = format!("{base_url}/v1/audio/tts/clone?format=wav");
         let resp = match client.post(&endpoint).multipart(form).send() {
@@ -441,6 +489,7 @@ fn handle_tts(input_json: &str) {
     }
 
     let duration_secs = wav_bytes.len().saturating_sub(44) as f64 / 48000.0;
+    let final_path = try_convert_to_mp3(&output_path);
     let voice_label = if resolve_custom_voice(&voice_name).is_some() {
         format!("{voice_name} (custom)")
     } else {
@@ -448,7 +497,7 @@ fn handle_tts(input_json: &str) {
     };
 
     succeed(&format!(
-        "Generated audio: {output_path} ({duration_secs:.1}s, voice: {voice_label}). Use send_file to deliver it to the user."
+        "Generated audio: {final_path} ({duration_secs:.1}s, voice: {voice_label}). Use send_file to deliver it to the user."
     ));
 }
 

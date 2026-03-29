@@ -30,6 +30,7 @@ DESIGN RULES (CRITICAL):
 - Think: Muji product catalog, Kinfolk magazine, Dieter Rams "less but better"
 
 CRITICAL: This must feel like a Scandinavian design studio's internal presentation — austere, confident, every element earning its place. The white space IS the design. If it doesn't feel empty enough, remove more.
+
 """
 
 [variants.data]
@@ -53,6 +54,7 @@ DATA-DENSE SLIDE RULES:
 - If showing pricing: display numbers prominently in red, context in gray
 
 CRITICAL: Data should speak for itself. The design disappears — only information remains. Bloomberg Terminal minimalism meets Swiss typography.
+
 """
 
 [variants.cover]
@@ -72,5 +74,6 @@ DESIGN:
 - At least 60% of the slide should be empty black space.
 
 CRITICAL: Absolute minimalism. Black, white, red. Three elements only: background, text, one geometric accent. Nothing else.
+
 """
 

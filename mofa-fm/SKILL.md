@@ -34,7 +34,7 @@ User's button press arrives as `[callback] voice:vivian`.
 ## Features
 
 - **Text-to-Speech** with preset or custom voices
-- **Emotion/Style Control**: Use natural language prompts to control speaking style (excited, sad, cheerful, shout, sarcastic, soft, panic). Works with both preset and cloned voices.
+- **Emotion/Style Control**: Use natural language prompts to control speaking style (excited, sad, cheerful, shout, sarcastic, soft, panic). Works with both preset and cloned voices. Chinese prompts work best with Chinese speakers (vivian, serena, dylan, uncle_fu); English prompts work best with English speakers (ryan, aiden).
 - **Speed Control**: Adjust speech speed from 0.5x to 2.0x
 - **Voice Cloning**: Upload a 3-10s audio clip, save it as a named voice, reuse it anytime
 
@@ -43,6 +43,33 @@ User's button press arrives as `[callback] voice:vivian`.
 > preset speakers. Some emotions (sad, angry, soft) work well; others (fearful, surprised) may
 > sound flat. Use short prompts like "用悲伤的语气说". Native support is expected with the upcoming
 > Qwen3-TTS-25Hz-VoiceEditing model.
+
+**Verified Chinese emotion prompts** (best with Chinese speakers: vivian, serena, dylan, uncle_fu):
+
+| Style | Prompt |
+|-------|--------|
+| Excited | `用兴奋激动的语气说话，充满热情和活力` |
+| Sad | `用悲伤失望的语气说话，声音低沉，语速缓慢` |
+| Cheerful | `用开朗愉快的语气说话，声音明亮上扬，节奏轻快` |
+| Shout | `用大声喊叫的方式说话，声音高亢有力，语速快` |
+| Sarcastic | `用讽刺嘲讽的语气说话，语调阴阳怪气，拖长尾音` |
+| Soft | `用温柔轻柔的语气说话` |
+| Panic | `用惊慌恐惧的语气说话，声音颤抖，语速急促` |
+
+**English emotion prompts** (best with English speakers: ryan, aiden):
+
+| Style | Prompt |
+|-------|--------|
+| Excited | `Speak with excitement and enthusiasm, full of energy` |
+| Sad | `Speak in a sad, disappointed tone, voice low and slow` |
+| Cheerful | `Speak cheerfully with a bright, upbeat voice` |
+| Shout | `Shout loudly with a powerful, high-pitched voice` |
+| Sarcastic | `Speak sarcastically with a mocking, drawn-out tone` |
+| Soft | `Speak gently and softly` |
+| Panic | `Speak in a panicked, trembling voice, fast and breathless` |
+
+Custom free-form prompts are also supported — include emotion + timbre + pace descriptors for strongest control.
+
 - **Voice Management**: Save, list, and delete custom voice profiles
 
 ## Preset Voices
@@ -59,52 +86,26 @@ vivian (default), serena, ryan, aiden, eric, dylan, uncle_fu, ono_anna, sohee
 
 ## Setup
 
-Requires Apple Silicon (MLX framework).
+Requires Apple Silicon with OminiX-MLX. Run `./scripts/setup.sh` or see source for manual setup.
 
-1. Install ominix-api: `cargo install --git https://github.com/OminiX-ai/OminiX-MLX ominix-api --features tts`
-2. Download models:
-   - Preset voices: `ominix-api --download Qwen3-TTS-12Hz-1.7B-CustomVoice-8bit`
-   - Voice cloning (optional): `ominix-api --download Qwen3-TTS-12Hz-1.7B-Base`
-3. Start the server: `ominix-api --tts-port 8082 --clone-port 8083`
-
-Or run the setup script: `./scripts/setup.sh`
-
-## Configuration
-
-Set `OMINIX_API_URL` for a custom server URL (default: auto-discovered from `~/.ominix/api_url` or `http://localhost:9090`).
-Set `CREW_DATA_DIR` for per-profile voice storage (set automatically by crew gateway).
-
-## API Endpoints
-
-Model-specific ominix-api endpoints:
-
-- **Preset voices** → `POST /v1/audio/tts/qwen3?format=wav` (Qwen3-TTS CustomVoice model)
-- **Custom/cloned voices** → `POST /v1/audio/tts/clone?format=wav` (Qwen3-TTS Base model with ECAPA-TDNN x-vector)
-
-The plugin automatically routes to the correct endpoint based on the voice name.
-
-### Audio Format
-
-The default TTS API response format is **WAV** (16-bit PCM, mono, 24kHz). For long text, the API automatically splits input at sentence boundaries and synthesizes each sentence independently (sentence-level pseudo-streaming), so the client receives first audio quickly while later sentences are still generating.
-
-The plugin auto-detects the response format:
-
-- **WAV response** (RIFF header detected or `Content-Type: audio/wav`) → saves as-is
-- **PCM response** (`Content-Type: audio/pcm`) → wraps in WAV header before saving
-
-### Concurrency
-
-TTS requests run on a dedicated TTS pool thread, separate from the main inference thread (LLM/ASR/image).
-Concurrent TTS and ASR requests do not block each other. Multiple TTS requests queue sequentially within the TTS pool (MLX limitation).
+Env vars: `OMINIX_API_URL` (server URL, auto-discovered), `OCTOS_DATA_DIR` (voice storage, auto-set by gateway).
 
 ## Tools
 
 ### fm_tts
 
-Synthesize speech from text. Supports preset voices and saved custom voices.
+Synthesize speech from text. Supports preset voices, saved custom voices, emotion control, and speed adjustment.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `text` | string | **yes** | Text to speak |
+| `voice` | string | no | Voice name: preset (vivian, ryan, etc.) or saved custom voice. Default: vivian |
+| `language` | string | no | chinese, english, japanese, korean. Default: auto-detect |
+| `prompt` | string | no | Emotion/style prompt (see tables above). e.g. `"用兴奋激动的语气说话"` |
+| `speed` | float | no | Speed factor: 0.5 (slow) to 2.0 (fast). Default: 1.0 |
 
 ```json
-{"text": "Hello world", "voice": "my_voice", "language": "english"}
+{"text": "大家好，欢迎收听今天的节目", "voice": "vivian", "prompt": "用兴奋激动的语气说话", "speed": 1.2}
 ```
 
 ### fm_voice_save

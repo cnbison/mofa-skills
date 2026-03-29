@@ -41,6 +41,7 @@ LAYOUT:
 - 0.5" minimum margins. Clean spacing.
 
 Huawei corporate aesthetic. Bold, tech-forward, confident. Red and black premium feel.
+
 """
 
 [variants.cover]
@@ -65,6 +66,7 @@ ILLUSTRATION STYLE:
 - Elegant, bold — like a Huawei MWC keynote cover
 
 Dark, bold, premium. Huawei keynote cover feel — confident and tech-forward.
+
 """
 
 [variants.data]
@@ -91,5 +93,6 @@ ILLUSTRATION STYLE (CRITICAL):
 Even data slides need PROMINENT WIREFRAME illustrations — detailed line art with red accents. NOT tiny icons. Each data slide should have at least one medium-to-large wireframe illustration.
 
 Huawei data slide aesthetic — bold red accents, clean data.
+
 """
 

@@ -27,4 +27,5 @@ DESIGN SYSTEM (follow precisely):
 - NO logos, NO photos, NO 3D elements, NO drop shadows, NO gradients on text.
 - Text must be PIXEL-PERFECT and EXACTLY as specified — every word, every letter, every punctuation mark.
 - Use clear visual hierarchy: title largest, subtitles medium, body text readable.
+
 """

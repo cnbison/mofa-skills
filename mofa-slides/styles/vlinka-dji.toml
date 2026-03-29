@@ -29,6 +29,7 @@ PRODUCT RENDERING (if reference image provided):
 ATMOSPHERE: Subtle lens flare or light leak in cyan. Faint particle effects or light rays. Premium, cinematic, high-tech. Think DJI Mavic product page. DO NOT include any page numbers or slide numbers.
 
 LAYOUT: Generous negative space. Do NOT fill the entire slide. Let the product and text breathe. Apple Keynote level spacing.
+
 """
 
 [variants.hero]
@@ -50,6 +51,7 @@ PRODUCT RENDERING (if reference image provided):
 TEXT PLACEMENT: Left 35% of slide. Headline top-left, aligned left. Body text below in smaller size. Clean vertical alignment.
 
 ATMOSPHERE: Subtle cyan glow emanating from product. Faint light particles. Premium, clean, cinematic. NO slide numbers anywhere.
+
 """
 
 [variants.feature]
@@ -71,6 +73,7 @@ CONTENT LAYOUT:
 ICON STYLE: Minimal line icons in cyan or white. Thin stroke weight. Modern, geometric.
 
 ATMOSPHERE: Dark, professional, premium. Layered gradient background with subtle depth. DJI spec-sheet aesthetic. NO slide numbers.
+
 """
 
 [variants.scene]
@@ -89,6 +92,7 @@ PRODUCT IN CONTEXT:
 - The scene should feel real but elevated — like an architectural visualization render
 
 ATMOSPHERE: Cinematic, moody, premium. Cool color temperature. Gradient shadows with selective illumination. Think high-end architectural photography. NO slide numbers.
+
 """
 
 [variants.data]
@@ -111,5 +115,6 @@ LAYOUT:
 - No product images needed — pure data impact
 
 ATMOSPHERE: Clean, bold, data-forward. Gradient dark background with depth. The numbers should be the hero. NO slide numbers anywhere.
+
 """
 

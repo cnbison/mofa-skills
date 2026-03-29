@@ -25,7 +25,7 @@ plan_and_search ──(N dynamic workers)──→ analyze ──→ synthesize
 run_pipeline(pipeline="mofa-research/deep_research", input="<research topic>")
 ```
 
-The pipeline file is at `~/.crew/skills/mofa-research/deep_research.dot`.
+The pipeline file is at `~/.octos/skills/mofa-research/deep_research.dot`.
 
 ## How it works
 

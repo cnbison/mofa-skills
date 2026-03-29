@@ -27,6 +27,13 @@ license: Proprietary. LICENSE.txt has complete terms
 - 扫描版 PDF（需先 OCR 处理 / requires OCR first）
 - 复杂的 PDF 编辑（用专业软件 / use professional software）
 
+### PDF Conversion (PDF 格式转换)
+- **PDF → Word** → `python scripts/convert_pdf_to_word.py input.pdf output.docx`
+- **Word → Markdown** → `python scripts/convert_word_to_md.py input.docx output.md`
+- **Word → Markdown (simple)** → `python scripts/convert_word_to_md_simple.py input.docx output.md`
+- **PDF → Images** → `pdftoppm -png -r 200 input.pdf output-prefix`
+- Detailed guide: `docs/pdf_to_word_conversion_guide.md`
+
 ---
 
 ## 核心流程
