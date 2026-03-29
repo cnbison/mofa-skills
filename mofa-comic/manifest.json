@@ -5,7 +5,7 @@
   "binaries": {
     "darwin-aarch64": {
       "url": "https://github.com/mofa-org/mofa-skills/releases/download/v0.3.1/mofa-darwin-aarch64.tar.gz",
-      "sha256": "2b2e48b7e3153046d92f4112af82dbd7f7fbd6bcd3ab9fc60d0a0e51192a2e00"
+      "sha256": "2762e55d03fe1771931f7153cd0d76bdb30dd143110a501511f670027e9204c8"
     }
   },
   "tools": [
