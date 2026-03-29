@@ -208,6 +208,7 @@ fn fetch_tts_wav(
 ) -> Result<Vec<u8>, String> {
     let resp = client
         .post(url)
+        .timeout(Duration::from_secs(600))
         .json(body)
         .send()
         .map_err(|e| {
@@ -463,7 +464,7 @@ fn handle_tts(input_json: &str) {
             form = form.text("prompt", prompt.clone());
         }
         let endpoint = format!("{base_url}/v1/audio/tts/clone");
-        let resp = match client.post(&endpoint).multipart(form).send() {
+        let resp = match client.post(&endpoint).timeout(Duration::from_secs(600)).multipart(form).send() {
             Ok(r) => r,
             Err(e) => fail(&format!("Clone request failed: {e}")),
         };
