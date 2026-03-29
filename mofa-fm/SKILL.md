@@ -1,7 +1,7 @@
 ---
 name: mofa-fm
 description: Voice management and TTS with custom voice cloning. Save named voices and reuse them. Triggers: voice clone, save voice, custom voice, my voice, TTS, text to speech, 语音克隆, 自定义声音.
-version: 1.0.0
+version: 0.3.1
 author: hagency
 always: false
 ---

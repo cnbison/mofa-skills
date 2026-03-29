@@ -1,6 +1,6 @@
 {
   "name": "mofa-cards",
-  "version": "0.1.0",
+  "version": "0.3.1",
   "timeout_secs": 1800,
   "binaries": {
     "darwin-aarch64": {

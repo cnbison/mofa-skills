@@ -1,5 +1,6 @@
 ---
 name: mofa-cards
+version: 0.3.1
 description: "AI-generated greeting cards as PNG images. Triggers: greeting card, 贺卡, mofa card, mofa 贺卡, make a card, CNY card, New Year card, 新年贺卡, ink-wash card. Generates full-bleed AI artwork via Gemini in various Chinese art styles."
 requires_bins: mofa
 requires_env: GEMINI_API_KEY
