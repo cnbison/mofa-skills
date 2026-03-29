@@ -248,9 +248,11 @@ fn fetch_tts_wav(
 const MIN_OMINIX_VERSION: &str = "0.1.0";
 
 fn check_health(client: &reqwest::blocking::Client, base_url: &str) -> Result<(), String> {
+    // Generous timeout: ominix-api is single-threaded (MLX), so /health may block
+    // while a TTS synthesis is in progress. 60s avoids false "not running" errors.
     match client
         .get(format!("{base_url}/health"))
-        .timeout(Duration::from_secs(5))
+        .timeout(Duration::from_secs(60))
         .send()
     {
         Ok(resp) if resp.status().is_success() => {
@@ -450,7 +452,7 @@ fn handle_tts(input_json: &str) {
         if let Some(ref prompt) = input.prompt {
             form = form.text("prompt", prompt.clone());
         }
-        let endpoint = format!("{base_url}/v1/audio/tts/clone?format=wav");
+        let endpoint = format!("{base_url}/v1/audio/tts/clone");
         let resp = match client.post(&endpoint).multipart(form).send() {
             Ok(r) => r,
             Err(e) => fail(&format!("Clone request failed: {e}")),
@@ -477,7 +479,7 @@ fn handle_tts(input_json: &str) {
         if let Some(speed) = input.speed {
             body["speed"] = json!(speed);
         }
-        let endpoint = format!("{base_url}/v1/audio/tts/qwen3?format=wav");
+        let endpoint = format!("{base_url}/v1/audio/tts/qwen3");
         match fetch_tts_wav(&client, &endpoint, &body) {
             Ok(b) => b,
             Err(e) => fail(&e),
