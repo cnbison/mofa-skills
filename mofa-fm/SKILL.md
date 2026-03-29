@@ -94,7 +94,7 @@ Env vars: `OMINIX_API_URL` (server URL, auto-discovered), `OCTOS_DATA_DIR` (voic
 
 ### fm_tts
 
-Synthesize speech from text. Supports preset voices, saved custom voices, emotion control, and speed adjustment.
+Synthesize speech from text. Supports **long text** — the server automatically splits at sentence boundaries and streams audio, so pass the entire text in one call. Do NOT manually split text into smaller pieces. Supports preset voices, saved custom voices, emotion control, and speed adjustment.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|

@@ -54,7 +54,7 @@
   "tools": [
     {
       "name": "fm_tts",
-      "description": "Synthesize speech from text. Supports preset voices and custom saved voices. If a custom voice name is given, voice cloning is used automatically. After generating, use send_file to deliver the audio to the user.",
+      "description": "Synthesize speech from text. Supports long text — the server automatically splits text at sentence boundaries and streams audio per-sentence, so you can pass an entire article or news broadcast in one call without splitting it yourself. Do NOT manually break text into smaller pieces. Supports preset voices and custom saved voices. If a custom voice name is given, voice cloning is used automatically. After generating, use send_file to deliver the audio to the user.",
       "input_schema": {
         "type": "object",
         "properties": {
