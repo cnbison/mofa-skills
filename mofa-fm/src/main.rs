@@ -4,6 +4,7 @@
 //! Requires OMINIX_API_URL and OCTOS_DATA_DIR environment variables.
 
 use std::collections::BTreeMap;
+use std::error::Error;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -143,9 +144,9 @@ fn ominix_base_url() -> String {
 fn http_client() -> reqwest::blocking::Client {
     reqwest::blocking::Client::builder()
         .connect_timeout(Duration::from_secs(120))
-        // No request timeout — clone with sentence chunking can take 5+ min for long text
-        // (single-threaded MLX pool processes one chunk at a time).
-        .tcp_keepalive(Duration::from_secs(15))
+        // No request timeout and no tcp_keepalive — ominix-api is single-threaded (MLX),
+        // so the server may go silent for 10-30s between sentence chunks while synthesizing.
+        // tcp_keepalive would kill the connection during these silent gaps.
         .build()
         .expect("failed to build HTTP client")
 }
@@ -209,7 +210,16 @@ fn fetch_tts_wav(
         .post(url)
         .json(body)
         .send()
-        .map_err(|e| format!("TTS request failed: {e}"))?;
+        .map_err(|e| {
+            // Print full error chain for debugging
+            let mut msg = format!("TTS request failed: {e}");
+            let mut source = e.source();
+            while let Some(cause) = source {
+                msg.push_str(&format!(" caused by: {cause}"));
+                source = cause.source();
+            }
+            msg
+        })?;
 
     let status = resp.status();
     if !status.is_success() {
