@@ -97,6 +97,7 @@ fn run_slides_sync(
         .build()?;
 
     pool.scope(|s| {
+        #[allow(clippy::redundant_locals)]
         for (idx, slide) in slides.iter().enumerate() {
             let gemini = gemini;
             let dashscope = dashscope;
