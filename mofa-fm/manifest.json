@@ -76,7 +76,7 @@
           },
           "prompt": {
             "type": "string",
-            "description": "Optional style/emotion instruction. IMPORTANT: Without prompt, the model naturally adapts tone to content (serious for war news, upbeat for tech). Only set prompt when you want to OVERRIDE this. For long mixed-content text (news broadcasts, articles), use a consistent professional tone like '用专业新闻播音员的语气朗读，语调平稳，节奏清晰' or leave empty for natural content-aware prosody. Emotion prompts are best for SHORT single-mood text: excited='用兴奋激动的语气说话，充满热情和活力', sad='用悲伤失望的语气说话，声音低沉，语速缓慢', cheerful='用开朗愉快的语气说话', soft='用温柔轻柔的语气说话', panic='用惊慌恐惧的语气说话，声音颤抖，语速急促'. English: excited='Speak with excitement and enthusiasm', sad='Speak in a sad tone, voice low and slow', soft='Speak gently and softly'."
+            "description": "Optional style instruction in natural language. Without this, the model naturally varies tone based on text content. Set this to OVERRIDE content-based tone with a consistent style across the entire text. Write the instruction as a role/manner description appropriate to the use case — the model understands free-form Chinese or English instructions. Examples: news broadcast='用专业新闻播音员的语气朗读，语调平稳，节奏清晰', storytelling='用讲故事的语气，声音温暖，节奏有起伏', excited='用兴奋激动的语气说话', soft='用温柔轻柔的语气说话'. Leave empty when content-aware natural tone is desired."
           },
           "speed": {
             "type": "number",
