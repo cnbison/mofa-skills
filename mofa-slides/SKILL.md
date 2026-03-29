@@ -22,7 +22,7 @@ skill-output/mofa-slides-<YYYYMMDD-HHMMSS>/slide-dir/
 
 Example: `"out": "skill-output/mofa-slides-20260308-143022/deck.pptx"`, `"slide_dir": "skill-output/mofa-slides-20260308-143022/imgs"`
 
-**Never use absolute paths like `/tmp/slides.pptx`** — they are outside the sandbox and `send_file` will reject them. Always use relative paths which resolve within the profile's data directory.
+**Never use absolute paths like `/tmp/slides.pptx`** — use relative paths instead.
 
 ## Interaction Guide
 

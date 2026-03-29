@@ -20,7 +20,7 @@ Config: `mofa/config.json`
 skill-output/mofa-cards-<YYYYMMDD-HHMMSS>/
 ```
 
-**Never use absolute paths like `/tmp/cards/`** — they are outside the sandbox and `send_file` will reject them. Always use relative paths which resolve within the profile's data directory.
+**Never use absolute paths like `/tmp/cards/`** — use relative paths instead.
 
 ## Interaction Guide
 

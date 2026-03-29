@@ -19,7 +19,7 @@ skill-output/mofa-infographic-<YYYYMMDD-HHMMSS>/poster.png
 skill-output/mofa-infographic-<YYYYMMDD-HHMMSS>/sections/
 ```
 
-**Never use absolute paths like `/tmp/poster.png`** — they are outside the sandbox and `send_file` will reject them. Always use relative paths which resolve within the profile's data directory.
+**Never use absolute paths like `/tmp/poster.png`** — use relative paths instead.
 
 ## Interaction Guide
 

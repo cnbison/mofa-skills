@@ -37,7 +37,7 @@ skill-output/mofa-comic-<YYYYMMDD-HHMMSS>/comic.png
 skill-output/mofa-comic-<YYYYMMDD-HHMMSS>/panels/
 ```
 
-**Never use absolute paths like `/tmp/comic.png`** — they are outside the sandbox and `send_file` will reject them. Always use relative paths which resolve within the profile's data directory.
+**Never use absolute paths like `/tmp/comic.png`** — use relative paths instead.
 
 ## Interaction Guide
 

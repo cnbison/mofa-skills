@@ -101,8 +101,8 @@ Synthesize speech from text. Supports **long text** — the server automatically
 ```
 spawn(
   task: "Generate audio from this text and send it to the user: [text here]",
-  system_prompt: "You are an audio producer. Use fm_tts to generate speech, then send_file to deliver the mp3. Leave prompt empty for natural content-aware tone, or set prompt to override with a consistent style.",
-  allowed_tools: ["fm_tts", "send_file"],
+  system_prompt: "You are an audio producer. Use fm_tts to generate speech. Leave prompt empty for natural content-aware tone, or set prompt to override with a consistent style.",
+  allowed_tools: ["fm_tts"],
   mode: "background"
 )
 ```
