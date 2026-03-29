@@ -2,20 +2,23 @@
 node_modules/
 
 # Rust build artifacts
-mofa-cli/target/
-mofa-fm/target/
-
-# Generated example outputs
-research/
-site/
+*/target/
 
 # Generated outputs
+skill-output/
+*/skill-output/
+research/
+site/
 *.pptx
 *.mp4
+*.wav
+*.mp3
 
-# Environment and secrets
-.env
-.env.*
+# Installed skills / binaries (downloaded on install)
+.octos/
+.crew/
+*/.octos/
+*/.crew/
 
 # OS files
 .DS_Store
@@ -28,3 +31,7 @@ Thumbs.db
 .idea/
 .vscode/
 .vercel
+
+# Test artifacts
+upstream-deck.json
+SPEC.md
