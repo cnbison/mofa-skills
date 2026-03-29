@@ -8,7 +8,7 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  build-cli:
     strategy:
       matrix:
         include:
@@ -33,7 +33,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: mofa-cli
-          key: ${{ matrix.target }}
+          key: cli-${{ matrix.target }}
       - run: cargo build --release --target ${{ matrix.target }}
       - name: Package
         run: |
@@ -46,8 +46,40 @@ jobs:
           name: mofa-${{ matrix.platform }}
           path: mofa-cli/dist/mofa-${{ matrix.platform }}.tar.gz*
 
+  build-fm:
+    strategy:
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            platform: darwin-aarch64
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: mofa-fm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: mofa-fm
+          key: fm-${{ matrix.target }}
+      - run: cargo build --release --target ${{ matrix.target }}
+      - name: Package
+        run: |
+          mkdir -p dist
+          cp target/${{ matrix.target }}/release/mofa-fm dist/main
+          cd dist && tar czf mofa-fm-${{ matrix.platform }}.tar.gz main
+          shasum -a 256 mofa-fm-${{ matrix.platform }}.tar.gz > mofa-fm-${{ matrix.platform }}.tar.gz.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mofa-fm-${{ matrix.platform }}
+          path: mofa-fm/dist/mofa-fm-${{ matrix.platform }}.tar.gz*
+
   release:
-    needs: build
+    needs: [build-cli, build-fm]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
