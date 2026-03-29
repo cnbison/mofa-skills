@@ -42,7 +42,7 @@
           },
           "out": {
             "type": "string",
-            "description": "Output PNG file path"
+            "description": "Output PNG file path. Use a relative path (e.g. output.png) — never use /tmp."
           },
           "work_dir": {
             "type": "string",

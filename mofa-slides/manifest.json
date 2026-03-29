@@ -50,7 +50,7 @@
           },
           "out": {
             "type": "string",
-            "description": "Output PPTX file path"
+            "description": "Output PPTX file path. Use a relative path (e.g. slides.pptx) — never use /tmp."
           },
           "slide_dir": {
             "type": "string",
