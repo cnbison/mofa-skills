@@ -4,8 +4,8 @@
   "timeout_secs": 3600,
   "binaries": {
     "darwin-aarch64": {
-      "url": "https://github.com/mofa-org/mofa-skills/releases/download/v0.3.0/mofa-darwin-aarch64.tar.gz",
-      "sha256": "aa473654b93c98cfd2b49a4222458a6332b4774ccb2981ccf6191ba54227655c"
+      "url": "https://github.com/mofa-org/mofa-skills/releases/download/v0.3.1/mofa-darwin-aarch64.tar.gz",
+      "sha256": "2b2e48b7e3153046d92f4112af82dbd7f7fbd6bcd3ab9fc60d0a0e51192a2e00"
     }
   },
   "tools": [

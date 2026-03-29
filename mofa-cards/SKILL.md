@@ -56,6 +56,21 @@ echo '[
 ]' | mofa cards --style cny-guochao --card-dir cards-output
 ```
 
+## Custom Styles (inline)
+
+You are NOT limited to the built-in styles. Write a full style prompt directly in the card's `prompt` field. Use any built-in style as `--style` base.
+
+| User says | Prompt snippet |
+|-----------|---------------|
+| Art Deco、复古金色 | `Deep navy (#1B1F3B), gold (#D4AF37) geometric sunburst, chevrons, fan shapes. 1920s luxury.` |
+| 国潮、Chinese guochao | `Deep red (#8B0000), gold (#D4AF37) traditional patterns — clouds, waves, dragons. Bold, vibrant.` |
+| 水墨、ink wash | `Rice paper texture (#F5F0E8). Black ink wash flowing strokes, mountains, bamboo. Red seal accent.` |
+| 敦煌、Dunhuang | `Sand (#C9A96E), terracotta (#B7623E), turquoise (#2E8B8B), gold. Flying apsaras, flame motifs.` |
+| 青花瓷、Blue porcelain | `White (#FAFAFA). Cobalt blue (#1A3C6D) delicate floral patterns — peonies, lotus, vine scrolls.` |
+| 日式和风 | `Soft cream (#F5F0E1), indigo (#2C3E6B). Cherry blossoms, wave patterns, torii gates. Wabi-sabi.` |
+| Retro 80s | `Dark purple gradient. Neon grid, chrome text, sunset gradients (pink→orange→purple). Synthwave.` |
+| Watercolor | `Soft wet-on-wet watercolor washes. Bleeding edges, organic color mixing. Delicate and dreamy.` |
+
 ## 8 Built-in Styles
 
 | Style | Theme | Best For |

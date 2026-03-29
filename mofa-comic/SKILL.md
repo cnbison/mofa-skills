@@ -65,6 +65,19 @@ message(content="Choose a comic style:", metadata={"inline_keyboard": [
 ```
 User's button press arrives as `[callback] style:xkcd`.
 
+## Custom Styles (inline)
+
+Not limited to built-in styles. Write a full style prompt in the panel's `prompt` field.
+
+| User says | Prompt snippet |
+|-----------|---------------|
+| Manga、日漫 | `Clean manga style — screentone shading, speed lines, large expressive eyes. Black and white.` |
+| 国漫、Chinese comic | `Chinese donghua style — flowing robes, ink-wash backgrounds, dynamic martial arts poses.` |
+| 水彩漫画 | `Soft watercolor comic panels. Bleeding edges, pastel palette. Gentle, dreamy atmosphere.` |
+| Pixel art | `16-bit pixel art style. Crisp pixels, limited color palette, retro game aesthetic.` |
+| Cyberpunk comic | `Dark neon-lit panels. Magenta (#FF00FF) and cyan (#00FFFF) highlights, rain-slicked streets.` |
+| Children's book | `Warm, rounded illustrations. Soft pastel colors, cute characters, gentle expressions.` |
+
 ## Styles (6)
 
 | User says | `--style` | Theme | Best For |
