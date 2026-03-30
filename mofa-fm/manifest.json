@@ -55,7 +55,7 @@
     {
       "name": "fm_tts",
       "spawn_only": true,
-      "description": "Synthesize speech from text. MUST be called via spawn(mode='background', allowed_tools=['fm_tts', 'fm_voice_list', 'fm_voice_save'], task='Generate audio: [your text]'). Do NOT call directly — it blocks the session. Do NOT use shell scripts. Just pass the full text in one spawn call. Files are automatically delivered to the user.",
+      "description": "Synthesize speech from text. Call this tool directly with the full text — it runs in background automatically and the audio file is delivered to the user when ready. Do NOT use shell scripts or manual splitting. Supports long text, preset and custom voices.",
       "input_schema": {
         "type": "object",
         "properties": {
