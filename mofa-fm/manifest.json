@@ -3,7 +3,7 @@
   "version": "0.3.1",
   "author": "hagency",
   "description": "Voice management and TTS with custom voice cloning via ominix-api",
-  "timeout_secs": 900,
+  "timeout_secs": 1800,
   "requires_network": true,
   "requires": {
     "bins": [
