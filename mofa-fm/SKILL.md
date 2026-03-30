@@ -96,18 +96,7 @@ Env vars: `OMINIX_API_URL` (server URL, auto-discovered), `OCTOS_DATA_DIR` (voic
 
 Synthesize speech from text. Supports **long text** — the server automatically splits at sentence boundaries and streams audio, so pass the entire text in one call. Do NOT manually split text into smaller pieces. Supports preset voices, saved custom voices, emotion control, and speed adjustment.
 
-**IMPORTANT: Always use `spawn` with `mode: "background"` for fm_tts.** TTS generation takes seconds to minutes. Backgrounding keeps the conversation responsive.
-
-```
-spawn(
-  task: "Generate audio from this text and send it to the user: [text here]",
-  system_prompt: "You are an audio producer. Use fm_tts to generate speech. Leave prompt empty for natural content-aware tone, or set prompt to override with a consistent style.",
-  allowed_tools: ["fm_tts"],
-  mode: "background"
-)
-```
-
-Tell the user "Audio is being generated, I'll send it when ready" and continue the conversation.
+Call fm_tts directly with the full text. It runs in background automatically — the session stays responsive and the audio file is delivered to the user when ready. Do NOT use spawn or shell scripts for TTS.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
