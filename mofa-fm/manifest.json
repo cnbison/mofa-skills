@@ -91,7 +91,7 @@
     },
     {
       "name": "fm_voice_save",
-      "description": "Save an audio file as a named custom voice for future TTS use. The audio should be 3-10 seconds of clear speech from the target speaker. Once saved, use the name with fm_tts to synthesize speech in that voice.",
+      "description": "Save an audio file as a named custom voice. ALWAYS call fm_voice_list first to check if the voice already exists — do NOT re-save existing voices. Only save new voices from user-provided audio clips (3-10 seconds of clear speech).",
       "input_schema": {
         "type": "object",
         "properties": {
@@ -112,7 +112,7 @@
     },
     {
       "name": "fm_voice_list",
-      "description": "List all available voices: both preset voices and saved custom voices.",
+      "description": "List all available voices (preset + saved custom). Call this FIRST before any TTS or voice_save to check what voices already exist.",
       "input_schema": {
         "type": "object",
         "properties": {}
