@@ -473,9 +473,15 @@ fn handle_tts(input_json: &str) {
             let t = resp.text().unwrap_or_default();
             fail(&format!("Clone error (HTTP {status}): {}", truncate(&t, 200)));
         }
-        match resp.bytes() {
+        let bytes = match resp.bytes() {
             Ok(b) => b.to_vec(),
             Err(e) => fail(&format!("Failed to read clone response: {e}")),
+        };
+        // Wrap raw PCM in WAV header if needed (streaming mode returns PCM, not WAV)
+        if bytes.len() >= 4 && &bytes[..4] == b"RIFF" {
+            bytes
+        } else {
+            pcm_to_wav(&bytes, 24000)
         }
     } else {
         // Preset voice → /v1/audio/tts/qwen3 (JSON)
