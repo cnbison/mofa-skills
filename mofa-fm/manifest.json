@@ -54,6 +54,7 @@
   "tools": [
     {
       "name": "fm_tts",
+      "spawn_only": true,
       "description": "Synthesize speech from text. Supports long text — the server automatically splits text at sentence boundaries and streams audio per-sentence, so you can pass an entire article or news broadcast in one call without splitting it yourself. Do NOT manually break text into smaller pieces. Supports preset voices and custom saved voices. If a custom voice name is given, voice cloning is used automatically. Files are automatically delivered to the user after generation.",
       "input_schema": {
         "type": "object",
