@@ -515,9 +515,10 @@ fn handle_tts(input_json: &str) {
         voice_name
     };
 
-    // Output files_to_send so the agent auto-delivers to the user
+    // Output files_to_send so the agent auto-delivers to the user.
+    // Don't include file path in output — prevents LLM from also calling send_file.
     let out = json!({
-        "output": format!("Generated audio: {final_path} ({duration_secs:.1}s, voice: {voice_label})."),
+        "output": format!("Audio generated and sent to user ({duration_secs:.1}s, voice: {voice_label})."),
         "success": true,
         "files_to_send": [&final_path]
     });
