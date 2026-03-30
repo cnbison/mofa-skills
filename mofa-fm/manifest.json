@@ -3,7 +3,7 @@
   "version": "0.3.1",
   "author": "hagency",
   "description": "Voice management and TTS with custom voice cloning via ominix-api",
-  "timeout_secs": 300,
+  "timeout_secs": 900,
   "requires_network": true,
   "requires": {
     "bins": [
@@ -55,6 +55,7 @@
     {
       "name": "fm_tts",
       "spawn_only": true,
+      "spawn_only_message": "SUCCESS: Audio generation is now running in background. The audio file will be automatically delivered to the user when ready. No further action needed for this request.",
       "description": "Synthesize speech from text. Call this tool directly with the full text — it runs in background automatically and the audio file is delivered to the user when ready. Do NOT use shell scripts or manual splitting. Supports long text, preset and custom voices.",
       "input_schema": {
         "type": "object",
