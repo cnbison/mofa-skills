@@ -395,7 +395,13 @@ fn handle_tts(input_json: &str) {
 
     // Save to OCTOS_WORK_DIR (inside profile data_dir) so send_file can access it
     let output_path = input.output_path.unwrap_or_else(|| {
-        let filename = format!("fm_tts_{}.wav", timestamp());
+        let voice_tag = input.voice.as_deref().unwrap_or("default");
+        let text_preview: String = input.text.chars().take(20)
+            .map(|c| if c.is_alphanumeric() || c == '-' { c } else { '_' })
+            .collect::<String>()
+            .trim_end_matches('_')
+            .to_string();
+        let filename = format!("{voice_tag}_{text_preview}_{}.mp3", timestamp());
         if let Ok(work_dir) = std::env::var("OCTOS_WORK_DIR") {
             let dir = Path::new(&work_dir);
             let _ = std::fs::create_dir_all(dir);
