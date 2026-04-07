@@ -43,6 +43,10 @@
               ]
             }
           },
+          "input": {
+            "type": "string",
+            "description": "Relative path to a JS or JSON file containing the slides array (for example slides/<slug>/script.js)."
+          },
           "style": {
             "type": "string",
             "description": "Style template name (default: nb-pro)",
@@ -83,8 +87,19 @@
           }
         },
         "required": [
-          "slides",
           "out"
+        ],
+        "anyOf": [
+          {
+            "required": [
+              "slides"
+            ]
+          },
+          {
+            "required": [
+              "input"
+            ]
+          }
         ]
       }
     }

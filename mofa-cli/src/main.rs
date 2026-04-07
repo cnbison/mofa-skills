@@ -378,9 +378,40 @@ fn plugin_slides(
     let auto_layout = args.get("auto_layout").and_then(|v| v.as_bool()).unwrap_or(false);
     let refine = args.get("refine").and_then(|v| v.as_bool()).unwrap_or(false);
 
-    let slides_json = args.get("slides")
-        .ok_or_else(|| eyre::eyre!("missing 'slides' array"))?;
-    let mut slides: Vec<pipeline::slides::SlideInput> = serde_json::from_value(slides_json.clone())?;
+    // Support `input` parameter: read slides from a JS/JSON file.
+    // JS files are evaluated via Node.js (module.exports = [...]).
+    let slides_json = if let Some(input_path) = args.get("input").and_then(|v| v.as_str()) {
+        let path = relocate_path(std::path::Path::new(input_path));
+        if !path.exists() {
+            eyre::bail!("input file not found: {}", path.display());
+        }
+        let is_js = path.extension().is_some_and(|e| e == "js" || e == "mjs" || e == "cjs");
+        if is_js {
+            // Canonicalize to absolute path — Node require() treats bare
+            // relative paths (no ./ prefix) as node_modules lookups.
+            let abs_path = std::fs::canonicalize(&path).unwrap_or(path.clone());
+            let output = std::process::Command::new("node")
+                .arg("-e")
+                .arg(format!("console.log(JSON.stringify(require('{}')))", abs_path.display()))
+                .output()
+                .map_err(|e| eyre::eyre!("failed to run node: {e}"))?;
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                eyre::bail!("node failed to evaluate {}: {stderr}", path.display());
+            }
+            serde_json::from_slice(&output.stdout)
+                .map_err(|e| eyre::eyre!("failed to parse node output: {e}"))?
+        } else {
+            let content = std::fs::read_to_string(&path)?;
+            serde_json::from_str(&content)
+                .map_err(|e| eyre::eyre!("failed to parse {}: {e}", path.display()))?
+        }
+    } else {
+        args.get("slides")
+            .ok_or_else(|| eyre::eyre!("missing 'slides' array (pass 'slides' or 'input')"))?
+            .clone()
+    };
+    let mut slides: Vec<pipeline::slides::SlideInput> = serde_json::from_value(slides_json)?;
 
     // Relocate embedded file paths (source_image, images, overlay_images) for per-profile isolation
     for slide in &mut slides {
@@ -405,8 +436,23 @@ fn plugin_slides(
         }
     }
 
-    let styles_dir = find_styles_dir(mofa_root, "slides");
-    let style_file = styles_dir.join(format!("{style_name}.toml"));
+    // Check workspace styles first (agent-created), then built-in styles.
+    // If neither exists, fall back to nb-pro so generation never fails on style.
+    let style_filename = format!("{style_name}.toml");
+    let builtin_dir = find_styles_dir(mofa_root, "slides");
+    let cwd_style = std::env::current_dir()
+        .ok()
+        .map(|d| d.join("styles").join(&style_filename))
+        .filter(|p| p.exists());
+    let builtin_style = builtin_dir.join(&style_filename);
+    let style_file = if let Some(ws) = cwd_style {
+        ws
+    } else if builtin_style.exists() {
+        builtin_style
+    } else {
+        eprintln!("style '{}' not found, falling back to nb-pro", style_name);
+        builtin_dir.join("nb-pro.toml")
+    };
     let loaded_style = style::load_style(&style_file)?;
 
     std::fs::create_dir_all(&slide_dir).ok();
