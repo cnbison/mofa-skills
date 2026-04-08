@@ -1,6 +1,6 @@
 ---
 name: mofa-comic
-version: 0.3.1
+version: 0.4.0
 description: "AI-generated comic strips and illustrations. Triggers: comic, manga, xkcd, 漫画, comic strip, 四格漫画, panel comic, illustration strip, snoopy. Generates multi-panel comics via Gemini with optional Qwen-Edit refinement, stitched into a single image."
 requires_bins: mofa
 requires_env: GEMINI_API_KEY

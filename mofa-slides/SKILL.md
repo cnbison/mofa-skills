@@ -1,6 +1,6 @@
 ---
 name: mofa-slides
-version: 0.3.1
+version: 0.4.0
 description: "AI-generated visual presentations with full-bleed Gemini images. Triggers: mofa, mofa ppt, mofa deck, slides, 幻灯片, generative slides, build a mofa ppt, 用mofa做PPT, AI deck, 做个PPT, make slides."
 always: true
 requires_bins: mofa
