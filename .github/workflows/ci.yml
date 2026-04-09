@@ -10,9 +10,12 @@ jobs:
   rust:
     name: Rust (check + clippy + test)
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        package: [mofa-cli, mofa-podcast]
     defaults:
       run:
-        working-directory: mofa-cli
+        working-directory: ${{ matrix.package }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -20,7 +23,7 @@ jobs:
           components: clippy
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: mofa-cli
+          workspaces: ${{ matrix.package }}
       - run: cargo check
       - run: cargo clippy -- -D warnings
       - run: cargo test

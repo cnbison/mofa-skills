@@ -1,0 +1,1012 @@
+//! MoFA Podcast: Multi-speaker podcast generation with TTS and audio assembly.
+//!
+//! Protocol: `./mofa-podcast <tool_name>` with JSON on stdin, JSON on stdout.
+//! Reuses ominix-api (same as mofa-fm) for TTS synthesis.
+
+use std::collections::BTreeMap;
+use std::io::Read as _;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::time::Duration;
+
+use regex::Regex;
+use serde::{Deserialize, Serialize};
+use serde_json::json;
+
+// ── Preset speakers (same as mofa-fm) ──────────────────────────────
+
+const PRESET_VOICES: &[&str] = &[
+    "vivian", "serena", "ryan", "aiden", "eric", "dylan", "uncle_fu", "ono_anna", "sohee",
+];
+
+// ── Emotion → TTS prompt mapping ───────────────────────────────────
+
+fn emotion_to_prompt(emotion: &str) -> Option<&'static str> {
+    match emotion.trim().to_lowercase().as_str() {
+        "calm" => None, // natural tone, no override
+        "excited" => Some("用兴奋激动的语气说话，充满热情和活力"),
+        "serious" => Some("用严肃认真的语气说话，语调沉稳"),
+        "warm" => Some("用温暖亲切的语气说话，声音柔和"),
+        "angry" => Some("用愤怒的语气说话，语气强烈"),
+        "sad" => Some("用悲伤低沉的语气说话，语调缓慢"),
+        "cheerful" => Some("用开朗愉快的语气说话，充满笑意"),
+        "dramatic" => Some("用戏剧化的语气说话，声音富有张力"),
+        "curious" => Some("用好奇探询的语气说话，语调上扬"),
+        "thoughtful" => Some("用沉思的语气缓缓说话，语调平稳而深沉"),
+        _ => None,
+    }
+}
+
+// ── Voice registry (shared with mofa-fm) ───────────────────────────
+
+#[derive(Serialize, Deserialize, Default)]
+struct VoiceRegistry {
+    #[serde(default)]
+    default_voice: Option<String>,
+    #[serde(default)]
+    voices: BTreeMap<String, VoiceEntry>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+struct VoiceEntry {
+    file: String,
+    #[serde(default)]
+    created_at: u64,
+}
+
+fn data_dir() -> PathBuf {
+    if let Ok(d) = std::env::var("OCTOS_DATA_DIR") {
+        PathBuf::from(d)
+    } else {
+        PathBuf::from("/tmp")
+    }
+}
+
+fn load_registry() -> VoiceRegistry {
+    let path = data_dir().join("voices.json");
+    match std::fs::read_to_string(&path) {
+        Ok(s) => serde_json::from_str(&s).unwrap_or_default(),
+        Err(_) => VoiceRegistry::default(),
+    }
+}
+
+fn resolve_custom_voice(name: &str) -> Option<PathBuf> {
+    let reg = load_registry();
+    if let Some(entry) = reg.voices.get(name) {
+        let p = PathBuf::from(&entry.file);
+        if p.exists() {
+            return Some(p);
+        }
+    }
+    let dir = data_dir().join("voice_profiles");
+    let wav = dir.join(format!("{name}.wav"));
+    if wav.exists() { Some(wav) } else { None }
+}
+
+// ── HTTP / ominix-api ──────────────────────────────────────────────
+
+fn ominix_base_url() -> String {
+    if let Ok(u) = std::env::var("OMINIX_API_URL") {
+        return u.trim_end_matches('/').to_string();
+    }
+    let disco = dirs_home().join(".ominix/api_url");
+    if let Ok(u) = std::fs::read_to_string(&disco) {
+        let u = u.trim().to_string();
+        if !u.is_empty() {
+            return u.trim_end_matches('/').to_string();
+        }
+    }
+    "http://localhost:9090".to_string()
+}
+
+fn dirs_home() -> PathBuf {
+    std::env::var("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("/tmp"))
+}
+
+fn http_client() -> reqwest::blocking::Client {
+    reqwest::blocking::Client::builder()
+        .connect_timeout(Duration::from_secs(120))
+        .tcp_keepalive(None)
+        .build()
+        .expect("failed to build http client")
+}
+
+// ── Audio helpers ──────────────────────────────────────────────────
+
+fn pcm_to_wav(pcm: &[u8], sample_rate: u32) -> Vec<u8> {
+    let channels: u16 = 1;
+    let bits: u16 = 16;
+    let byte_rate = sample_rate * u32::from(channels) * u32::from(bits) / 8;
+    let block_align = channels * bits / 8;
+    let data_len = pcm.len() as u32;
+    let file_len = 36 + data_len;
+
+    let mut buf = Vec::with_capacity(44 + pcm.len());
+    buf.extend_from_slice(b"RIFF");
+    buf.extend_from_slice(&file_len.to_le_bytes());
+    buf.extend_from_slice(b"WAVE");
+    buf.extend_from_slice(b"fmt ");
+    buf.extend_from_slice(&16u32.to_le_bytes());
+    buf.extend_from_slice(&1u16.to_le_bytes()); // PCM
+    buf.extend_from_slice(&channels.to_le_bytes());
+    buf.extend_from_slice(&sample_rate.to_le_bytes());
+    buf.extend_from_slice(&byte_rate.to_le_bytes());
+    buf.extend_from_slice(&block_align.to_le_bytes());
+    buf.extend_from_slice(&bits.to_le_bytes());
+    buf.extend_from_slice(b"data");
+    buf.extend_from_slice(&data_len.to_le_bytes());
+    buf.extend_from_slice(pcm);
+    buf
+}
+
+fn generate_silence_wav(duration_ms: u32) -> Vec<u8> {
+    let sample_rate: u32 = 24000;
+    let num_samples = sample_rate * duration_ms / 1000;
+    let pcm = vec![0u8; (num_samples * 2) as usize]; // 16-bit silence
+    pcm_to_wav(&pcm, sample_rate)
+}
+
+/// Resolve ffmpeg binary path — checks PATH first, then common install locations.
+fn ffmpeg_bin() -> &'static str {
+    static FFMPEG: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    FFMPEG.get_or_init(|| {
+        // Check PATH first
+        if Command::new("ffmpeg").arg("-version")
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status().is_ok()
+        {
+            return "ffmpeg".to_string();
+        }
+        // Common install locations (macOS homebrew, linux)
+        for path in ["/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg", "/usr/bin/ffmpeg"] {
+            if Path::new(path).exists() {
+                return path.to_string();
+            }
+        }
+        "ffmpeg".to_string() // fallback, will fail gracefully
+    })
+}
+
+fn try_convert_to_mp3(wav_path: &str) -> String {
+    let mp3_path = wav_path.replace(".wav", ".mp3");
+    let result = Command::new(ffmpeg_bin())
+        .args(["-y", "-i", wav_path, "-codec:a", "libmp3lame", "-b:a", "192k", "-q:a", "2", &mp3_path])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
+    match result {
+        Ok(s) if s.success() => {
+            let _ = std::fs::remove_file(wav_path);
+            mp3_path
+        }
+        _ => wav_path.to_string(),
+    }
+}
+
+/// Concatenate multiple WAV files into one.
+/// Tries ffmpeg first for best quality; falls back to raw PCM concatenation.
+fn concatenate_wavs(wav_paths: &[String], output_path: &str) -> Result<(), String> {
+    if wav_paths.is_empty() {
+        return Err("No WAV files to concatenate".into());
+    }
+
+    // Try ffmpeg first
+    if concatenate_wavs_ffmpeg(wav_paths, output_path).is_ok() {
+        return Ok(());
+    }
+    eprintln!("[podcast] ffmpeg not available, using raw WAV concatenation");
+
+    // Fallback: raw PCM concatenation (all WAVs are 24kHz 16-bit mono)
+    let mut all_pcm: Vec<u8> = Vec::new();
+    for path in wav_paths {
+        let data = std::fs::read(path)
+            .map_err(|e| format!("Failed to read {path}: {e}"))?;
+        if data.len() > 44 && &data[..4] == b"RIFF" {
+            all_pcm.extend_from_slice(&data[44..]); // skip WAV header
+        } else {
+            all_pcm.extend_from_slice(&data); // raw PCM
+        }
+    }
+    let wav = pcm_to_wav(&all_pcm, 24000);
+    std::fs::write(output_path, &wav)
+        .map_err(|e| format!("Failed to write {output_path}: {e}"))?;
+    Ok(())
+}
+
+fn concatenate_wavs_ffmpeg(wav_paths: &[String], output_path: &str) -> Result<(), String> {
+    let mut filter_inputs = String::new();
+    let mut args: Vec<String> = vec!["-y".into()];
+
+    for (i, path) in wav_paths.iter().enumerate() {
+        args.push("-i".into());
+        args.push(path.clone());
+        filter_inputs.push_str(&format!("[{i}:a]"));
+    }
+    let filter_concat = format!("{}concat=n={}:v=0:a=1[out]", filter_inputs, wav_paths.len());
+
+    args.push("-filter_complex".into());
+    args.push(filter_concat);
+    args.push("-map".into());
+    args.push("[out]".into());
+    args.push("-ar".into());
+    args.push("24000".into());
+    args.push("-ac".into());
+    args.push("1".into());
+    args.push(output_path.into());
+
+    let result = Command::new(ffmpeg_bin())
+        .args(&args)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
+        .output();
+
+    match result {
+        Ok(output) if output.status.success() => Ok(()),
+        Ok(output) => {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            Err(format!("ffmpeg concat failed: {}", &stderr[..stderr.len().min(300)]))
+        }
+        Err(e) => Err(format!("ffmpeg not available: {e}")),
+    }
+}
+
+// ── Script parser ──────────────────────────────────────────────────
+
+#[derive(Debug, Clone)]
+enum ScriptLine {
+    Dialogue {
+        seg_id: u32,
+        character: String,
+        voice: String,
+        is_clone: bool,
+        emotion: String,
+        text: String,
+    },
+    Bgm {
+        #[allow(dead_code)]
+        description: String,
+        #[allow(dead_code)]
+        fade: String,
+        duration_s: u32,
+    },
+    Pause {
+        duration_s: u32,
+    },
+}
+
+fn parse_script(script: &str) -> Vec<ScriptLine> {
+    let dialogue_re = Regex::new(
+        r"^\[([^\]\-]+)\s*-\s*([^\],]+),\s*([^\]]+)\]\s*(.+)$"
+    ).unwrap();
+    let bgm_re = Regex::new(
+        r"^\[BGM:\s*([^—\-]+)[—\-]\s*([^,]+),\s*(\d+)s?\]"
+    ).unwrap();
+    let pause_re = Regex::new(
+        r"^\[PAUSE:\s*(\d+)s?\]"
+    ).unwrap();
+
+    let mut lines = Vec::new();
+    let mut seg_counter: u32 = 0;
+
+    for line in script.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') || line.starts_with('|') || line.starts_with("**") || line == "---" {
+            continue;
+        }
+
+        if let Some(caps) = dialogue_re.captures(line) {
+            seg_counter += 1;
+            let character = caps[1].trim().to_string();
+            let voice_raw = caps[2].trim().to_string();
+            let emotion = caps[3].trim().to_string();
+            let text = caps[4].trim().to_string();
+
+            let (voice, is_clone) = if let Some(cloned) = voice_raw.strip_prefix("clone:") {
+                (cloned.to_string(), true)
+            } else {
+                (voice_raw.clone(), false)
+            };
+
+            lines.push(ScriptLine::Dialogue {
+                seg_id: seg_counter,
+                character,
+                voice,
+                is_clone,
+                emotion,
+                text,
+            });
+        } else if let Some(caps) = bgm_re.captures(line) {
+            lines.push(ScriptLine::Bgm {
+                description: caps[1].trim().to_string(),
+                fade: caps[2].trim().to_string(),
+                duration_s: caps[3].parse().unwrap_or(3),
+            });
+        } else if let Some(caps) = pause_re.captures(line) {
+            lines.push(ScriptLine::Pause {
+                duration_s: caps[1].parse().unwrap_or(2),
+            });
+        }
+    }
+    lines
+}
+
+// ── TTS generation for a single segment ────────────────────────────
+
+fn generate_tts_segment(
+    client: &reqwest::blocking::Client,
+    base_url: &str,
+    voice: &str,
+    is_clone: bool,
+    text: &str,
+    emotion: &str,
+    output_path: &str,
+) -> Result<(), String> {
+    let prompt = emotion_to_prompt(emotion);
+
+    let wav_bytes = if is_clone {
+        let ref_path = resolve_custom_voice(voice)
+            .ok_or_else(|| format!("Cloned voice '{}' not found. Save it first with fm_voice_save.", voice))?;
+        let ref_bytes = std::fs::read(&ref_path)
+            .map_err(|e| format!("Failed to read voice '{}': {e}", voice))?;
+
+        use reqwest::blocking::multipart::{Form, Part};
+        let mut form = Form::new()
+            .text("input", text.to_string())
+            .text("language", "chinese".to_string())
+            .part(
+                "reference_audio",
+                Part::bytes(ref_bytes)
+                    .file_name("ref.wav")
+                    .mime_str("audio/wav")
+                    .unwrap(),
+            );
+        if let Some(p) = prompt {
+            form = form.text("prompt", p.to_string());
+        }
+
+        let endpoint = format!("{base_url}/v1/audio/tts/clone");
+        let resp = client
+            .post(&endpoint)
+            .timeout(Duration::from_secs(600))
+            .multipart(form)
+            .send()
+            .map_err(|e| format!("Clone TTS request failed: {e}"))?;
+
+        if !resp.status().is_success() {
+            let t = resp.text().unwrap_or_default();
+            return Err(format!("Clone TTS error (HTTP): {}", &t.chars().take(200).collect::<String>()));
+        }
+        let bytes = resp.bytes().map_err(|e| format!("Read response: {e}"))?.to_vec();
+        if bytes.len() >= 4 && &bytes[..4] == b"RIFF" {
+            bytes
+        } else {
+            pcm_to_wav(&bytes, 24000)
+        }
+    } else {
+        let mut body = json!({
+            "input": text,
+            "voice": voice,
+            "language": "chinese"
+        });
+        if let Some(p) = prompt {
+            body["prompt"] = json!(p);
+        }
+
+        let endpoint = format!("{base_url}/v1/audio/tts/qwen3");
+        let resp = client
+            .post(&endpoint)
+            .timeout(Duration::from_secs(600))
+            .json(&body)
+            .send()
+            .map_err(|e| format!("Preset TTS request failed: {e}"))?;
+
+        if !resp.status().is_success() {
+            let t = resp.text().unwrap_or_default();
+            return Err(format!("Preset TTS error (HTTP): {}", &t.chars().take(200).collect::<String>()));
+        }
+        let bytes = resp.bytes().map_err(|e| format!("Read response: {e}"))?.to_vec();
+        if bytes.len() >= 4 && &bytes[..4] == b"RIFF" {
+            bytes
+        } else {
+            pcm_to_wav(&bytes, 24000)
+        }
+    };
+
+    std::fs::write(output_path, &wav_bytes)
+        .map_err(|e| format!("Failed to write {output_path}: {e}"))?;
+    Ok(())
+}
+
+// ── Tool handlers ──────────────────────────────────────────────────
+
+fn handle_voices(_input_json: &str) {
+    let reg = load_registry();
+    let presets: Vec<&str> = PRESET_VOICES.to_vec();
+    let custom: Vec<&String> = reg.voices.keys().collect();
+
+    let mut out = String::new();
+    out.push_str("## Available Voices\n\n");
+    out.push_str("### Preset (built-in)\n");
+    for v in &presets {
+        out.push_str(&format!("- `{v}`\n"));
+    }
+
+    if !custom.is_empty() {
+        out.push_str("\n### Custom (cloned)\n");
+        for v in &custom {
+            out.push_str(&format!("- `{v}` (use as `clone:{v}` in script)\n"));
+        }
+    } else {
+        out.push_str("\n### Custom (cloned)\n");
+        out.push_str("_No custom voices saved yet. Use `fm_voice_save` in mofa-fm to clone a voice._\n");
+    }
+
+    succeed(&out);
+}
+
+fn handle_generate(input_json: &str) {
+    #[derive(Deserialize)]
+    struct Input {
+        #[serde(default)]
+        script: Option<String>,
+        #[serde(default)]
+        script_path: Option<String>,
+        #[serde(default)]
+        output_dir: Option<String>,
+    }
+
+    let input: Input = match serde_json::from_str(input_json) {
+        Ok(v) => v,
+        Err(e) => fail(&format!("Invalid input: {e}")),
+    };
+
+    // Read script content
+    let script = if let Some(s) = input.script {
+        s
+    } else if let Some(ref path) = input.script_path {
+        // Resolve relative paths against OCTOS_WORK_DIR (crew sets this to user workspace)
+        let resolved = if !Path::new(path).is_absolute() {
+            if let Ok(work_dir) = std::env::var("OCTOS_WORK_DIR") {
+                let full = Path::new(&work_dir).join(path);
+                if full.exists() {
+                    full.to_string_lossy().to_string()
+                } else {
+                    path.clone()
+                }
+            } else {
+                path.clone()
+            }
+        } else {
+            path.clone()
+        };
+        match std::fs::read_to_string(&resolved) {
+            Ok(s) => s,
+            Err(e) => fail(&format!("Failed to read script file '{}': {e}", resolved)),
+        }
+    } else {
+        fail("Either 'script' or 'script_path' must be provided");
+    };
+
+    // Setup output directory
+    let output_dir = input.output_dir.unwrap_or_else(|| {
+        if let Ok(work_dir) = std::env::var("OCTOS_WORK_DIR") {
+            format!("{work_dir}/skill-output/mofa-podcast")
+        } else {
+            "skill-output/mofa-podcast".to_string()
+        }
+    });
+    let seg_dir = format!("{output_dir}/segments");
+    let _ = std::fs::create_dir_all(&seg_dir);
+
+    // Parse script
+    let lines = parse_script(&script);
+    if lines.is_empty() {
+        fail("No dialogue lines found in script. Ensure format: [Character - voice, emotion] text");
+    }
+
+    let dialogue_count = lines.iter().filter(|l| matches!(l, ScriptLine::Dialogue { .. })).count();
+    eprintln!("[podcast] Parsed {} script lines ({} dialogue segments)", lines.len(), dialogue_count);
+
+    // Separate dialogue lines into built-in and clone groups
+    let mut builtin_segments: Vec<(u32, String, String, String, String)> = Vec::new(); // (seg_id, voice, emotion, text, character)
+    let mut clone_segments: Vec<(u32, String, String, String, String)> = Vec::new();
+
+    for line in &lines {
+        if let ScriptLine::Dialogue { seg_id, voice, is_clone, emotion, text, character, .. } = line {
+            let entry = (*seg_id, voice.clone(), emotion.clone(), text.clone(), character.clone());
+            if *is_clone {
+                clone_segments.push(entry);
+            } else {
+                builtin_segments.push(entry);
+            }
+        }
+    }
+
+    // Sort each group by voice name to minimize model switching
+    builtin_segments.sort_by(|a, b| a.1.cmp(&b.1).then(a.0.cmp(&b.0)));
+    clone_segments.sort_by(|a, b| a.1.cmp(&b.1).then(a.0.cmp(&b.0)));
+
+    // Generate TTS
+    let client = http_client();
+    let base_url = ominix_base_url();
+
+    let mut errors: Vec<String> = Vec::new();
+    let total = builtin_segments.len() + clone_segments.len();
+    let mut completed = 0;
+
+    // Phase 1: Built-in voices
+    eprintln!("[podcast] Phase 1: Generating {} built-in voice segments...", builtin_segments.len());
+    for (seg_id, voice, emotion, text, character) in &builtin_segments {
+        let seg_path = format!("{seg_dir}/{voice}_seg_{seg_id:03}.wav");
+        completed += 1;
+        eprintln!("[podcast] [{completed}/{total}] {character} ({voice}, {emotion}): {}...",
+            &text.chars().take(20).collect::<String>());
+
+        match generate_tts_segment(&client, &base_url, voice, false, text, emotion, &seg_path) {
+            Ok(()) => {},
+            Err(e) => {
+                eprintln!("[podcast] ERROR seg_{seg_id:03}: {e}");
+                errors.push(format!("seg_{seg_id:03} ({character}): {e}"));
+            }
+        }
+    }
+
+    // Phase 2: Cloned voices
+    if !clone_segments.is_empty() {
+        eprintln!("[podcast] Phase 2: Generating {} cloned voice segments...", clone_segments.len());
+        for (seg_id, voice, emotion, text, character) in &clone_segments {
+            let seg_path = format!("{seg_dir}/{voice}_seg_{seg_id:03}.wav");
+            completed += 1;
+            eprintln!("[podcast] [{completed}/{total}] {character} (clone:{voice}, {emotion}): {}...",
+                &text.chars().take(20).collect::<String>());
+
+            match generate_tts_segment(&client, &base_url, voice, true, text, emotion, &seg_path) {
+                Ok(()) => {},
+                Err(e) => {
+                    eprintln!("[podcast] ERROR seg_{seg_id:03}: {e}");
+                    errors.push(format!("seg_{seg_id:03} ({character}): {e}"));
+                }
+            }
+        }
+    }
+
+    // Phase 3: Assemble timeline
+    eprintln!("[podcast] Phase 3: Assembling timeline...");
+    let mut timeline_wavs: Vec<String> = Vec::new();
+
+    for line in &lines {
+        match line {
+            ScriptLine::Dialogue { seg_id, voice, .. } => {
+                let seg_path = format!("{seg_dir}/{voice}_seg_{seg_id:03}.wav");
+                if Path::new(&seg_path).exists() {
+                    timeline_wavs.push(seg_path);
+                    // Insert inter-speaker pause (400ms)
+                    let pause_path = format!("{seg_dir}/pause_after_{seg_id:03}.wav");
+                    let silence = generate_silence_wav(400);
+                    let _ = std::fs::write(&pause_path, &silence);
+                    timeline_wavs.push(pause_path);
+                }
+            }
+            ScriptLine::Pause { duration_s } => {
+                let pause_path = format!("{seg_dir}/pause_{}.wav", timestamp());
+                let silence = generate_silence_wav(duration_s * 1000);
+                let _ = std::fs::write(&pause_path, &silence);
+                timeline_wavs.push(pause_path);
+            }
+            ScriptLine::Bgm { duration_s, .. } => {
+                // BGM placeholder: insert silence for now (music mixed in post-production)
+                let bgm_path = format!("{seg_dir}/bgm_placeholder_{}.wav", timestamp());
+                let silence = generate_silence_wav(duration_s * 1000);
+                let _ = std::fs::write(&bgm_path, &silence);
+                timeline_wavs.push(bgm_path);
+            }
+        }
+    }
+
+    if timeline_wavs.is_empty() {
+        fail("No audio segments were generated successfully");
+    }
+
+    // Concatenate all WAVs
+    let concat_wav = format!("{output_dir}/podcast_full_{}.wav", timestamp());
+    if let Err(e) = concatenate_wavs(&timeline_wavs, &concat_wav) {
+        fail(&format!("Concatenation failed: {e}"));
+    }
+
+    // Convert to MP3
+    let final_path = try_convert_to_mp3(&concat_wav);
+
+    // Clean up segment files
+    let _ = std::fs::remove_dir_all(&seg_dir);
+
+    // Report
+    let file_size = std::fs::metadata(&final_path).map(|m| m.len()).unwrap_or(0);
+    let size_mb = file_size as f64 / 1_048_576.0;
+
+    let mut output_msg = format!(
+        "Podcast generated successfully!\n\
+         - Segments: {dialogue_count} dialogue + {} BGM/pause\n\
+         - Output: {final_path} ({size_mb:.1} MB)",
+        lines.len() - dialogue_count
+    );
+    if !errors.is_empty() {
+        output_msg.push_str(&format!("\n- Warnings: {} segments failed:\n", errors.len()));
+        for e in &errors {
+            output_msg.push_str(&format!("  - {e}\n"));
+        }
+    }
+
+    let out = json!({
+        "output": output_msg,
+        "success": errors.is_empty() || (errors.len() < dialogue_count),
+        "files_to_send": [&final_path]
+    });
+    println!("{out}");
+    std::process::exit(0);
+}
+
+// ── Utility ────────────────────────────────────────────────────────
+
+fn fail(msg: &str) -> ! {
+    let out = json!({ "error": msg, "success": false });
+    println!("{out}");
+    std::process::exit(1);
+}
+
+fn succeed(msg: &str) -> ! {
+    let out = json!({ "output": msg, "success": true });
+    println!("{out}");
+    std::process::exit(0);
+}
+
+fn timestamp() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+
+// ── Tests ──────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── Script parser tests ────────────────────────────────────────
+
+    #[test]
+    fn parse_basic_dialogue() {
+        let script = "[Host - vivian, cheerful] Hello world!";
+        let lines = parse_script(script);
+        assert_eq!(lines.len(), 1);
+        match &lines[0] {
+            ScriptLine::Dialogue { seg_id, character, voice, is_clone, emotion, text } => {
+                assert_eq!(*seg_id, 1);
+                assert_eq!(character, "Host");
+                assert_eq!(voice, "vivian");
+                assert!(!is_clone);
+                assert_eq!(emotion, "cheerful");
+                assert_eq!(text, "Hello world!");
+            }
+            _ => panic!("Expected Dialogue"),
+        }
+    }
+
+    #[test]
+    fn parse_clone_voice() {
+        let script = "[Expert - clone:sarah, serious] This is important data.";
+        let lines = parse_script(script);
+        assert_eq!(lines.len(), 1);
+        match &lines[0] {
+            ScriptLine::Dialogue { voice, is_clone, .. } => {
+                assert_eq!(voice, "sarah");
+                assert!(*is_clone);
+            }
+            _ => panic!("Expected Dialogue"),
+        }
+    }
+
+    #[test]
+    fn parse_bgm_cue() {
+        let script = "[BGM: Upbeat intro music — fade-in, 5s]";
+        let lines = parse_script(script);
+        assert_eq!(lines.len(), 1);
+        match &lines[0] {
+            ScriptLine::Bgm { description, fade, duration_s } => {
+                assert_eq!(description, "Upbeat intro music");
+                assert_eq!(fade, "fade-in");
+                assert_eq!(*duration_s, 5);
+            }
+            _ => panic!("Expected Bgm"),
+        }
+    }
+
+    #[test]
+    fn parse_bgm_with_ascii_dash() {
+        let script = "[BGM: Outro music - fade-out, 3s]";
+        let lines = parse_script(script);
+        assert_eq!(lines.len(), 1);
+        match &lines[0] {
+            ScriptLine::Bgm { duration_s, .. } => {
+                assert_eq!(*duration_s, 3);
+            }
+            _ => panic!("Expected Bgm"),
+        }
+    }
+
+    #[test]
+    fn parse_pause() {
+        let script = "[PAUSE: 2s]";
+        let lines = parse_script(script);
+        assert_eq!(lines.len(), 1);
+        match &lines[0] {
+            ScriptLine::Pause { duration_s } => assert_eq!(*duration_s, 2),
+            _ => panic!("Expected Pause"),
+        }
+    }
+
+    #[test]
+    fn parse_pause_without_s_suffix() {
+        let script = "[PAUSE: 3]";
+        let lines = parse_script(script);
+        assert_eq!(lines.len(), 1);
+        match &lines[0] {
+            ScriptLine::Pause { duration_s } => assert_eq!(*duration_s, 3),
+            _ => panic!("Expected Pause"),
+        }
+    }
+
+    #[test]
+    fn parse_full_script() {
+        let script = r#"# My Podcast
+
+**Genre**: talk-show | **Duration**: ~5 min | **Speakers**: 2
+
+| Character | Voice | Type |
+|-----------|-------|------|
+| Host | vivian | built-in |
+| Guest | ryan | built-in |
+
+---
+
+[BGM: Intro music — fade-in, 3s]
+
+[Host - vivian, cheerful] Welcome to the show!
+
+[Guest - ryan, excited] Thanks for having me!
+
+[PAUSE: 2s]
+
+[Host - vivian, curious] What are you working on?
+
+[Guest - ryan, thoughtful] I'm researching AI voice synthesis.
+
+[BGM: Outro — fade-out, 3s]
+"#;
+        let lines = parse_script(script);
+        // Should have: 1 BGM + 4 dialogue + 1 pause + 1 BGM = 7
+        assert_eq!(lines.len(), 7);
+
+        // Check types in order
+        assert!(matches!(&lines[0], ScriptLine::Bgm { .. }));
+        assert!(matches!(&lines[1], ScriptLine::Dialogue { character, .. } if character == "Host"));
+        assert!(matches!(&lines[2], ScriptLine::Dialogue { character, .. } if character == "Guest"));
+        assert!(matches!(&lines[3], ScriptLine::Pause { duration_s: 2 }));
+        assert!(matches!(&lines[4], ScriptLine::Dialogue { character, .. } if character == "Host"));
+        assert!(matches!(&lines[5], ScriptLine::Dialogue { character, .. } if character == "Guest"));
+        assert!(matches!(&lines[6], ScriptLine::Bgm { .. }));
+    }
+
+    #[test]
+    fn parse_sequential_seg_ids() {
+        let script = "[A - vivian, calm] Line one.\n[B - ryan, calm] Line two.\n[C - serena, calm] Line three.";
+        let lines = parse_script(script);
+        assert_eq!(lines.len(), 3);
+        if let ScriptLine::Dialogue { seg_id, .. } = &lines[0] { assert_eq!(*seg_id, 1); }
+        if let ScriptLine::Dialogue { seg_id, .. } = &lines[1] { assert_eq!(*seg_id, 2); }
+        if let ScriptLine::Dialogue { seg_id, .. } = &lines[2] { assert_eq!(*seg_id, 3); }
+    }
+
+    #[test]
+    fn parse_skips_markdown_headers() {
+        let script = "# Title\n## Subtitle\n**Bold text**\n---\n| table | row |\n[Host - vivian, calm] Actual dialogue.";
+        let lines = parse_script(script);
+        assert_eq!(lines.len(), 1);
+        assert!(matches!(&lines[0], ScriptLine::Dialogue { .. }));
+    }
+
+    #[test]
+    fn parse_chinese_script() {
+        let script = "[主持人 - vivian, cheerful] 大家好，欢迎收听今天的节目！";
+        let lines = parse_script(script);
+        assert_eq!(lines.len(), 1);
+        match &lines[0] {
+            ScriptLine::Dialogue { character, text, .. } => {
+                assert_eq!(character, "主持人");
+                assert_eq!(text, "大家好，欢迎收听今天的节目！");
+            }
+            _ => panic!("Expected Dialogue"),
+        }
+    }
+
+    #[test]
+    fn parse_empty_script() {
+        let lines = parse_script("");
+        assert!(lines.is_empty());
+    }
+
+    #[test]
+    fn parse_only_metadata() {
+        let script = "# Title\n\n**Genre**: drama\n\n---\n";
+        let lines = parse_script(script);
+        assert!(lines.is_empty());
+    }
+
+    #[test]
+    fn parse_mixed_clone_and_preset() {
+        let script = "[A - vivian, calm] Preset voice.\n[B - clone:custom_voice, excited] Cloned voice.";
+        let lines = parse_script(script);
+        assert_eq!(lines.len(), 2);
+        match &lines[0] {
+            ScriptLine::Dialogue { is_clone, voice, .. } => {
+                assert!(!is_clone);
+                assert_eq!(voice, "vivian");
+            }
+            _ => panic!("Expected Dialogue"),
+        }
+        match &lines[1] {
+            ScriptLine::Dialogue { is_clone, voice, .. } => {
+                assert!(*is_clone);
+                assert_eq!(voice, "custom_voice");
+            }
+            _ => panic!("Expected Dialogue"),
+        }
+    }
+
+    // ── Emotion mapping tests ──────────────────────────────────────
+
+    #[test]
+    fn emotion_calm_returns_none() {
+        assert!(emotion_to_prompt("calm").is_none());
+    }
+
+    #[test]
+    fn emotion_excited_returns_prompt() {
+        let p = emotion_to_prompt("excited");
+        assert!(p.is_some());
+        assert!(p.unwrap().contains("兴奋"));
+    }
+
+    #[test]
+    fn emotion_case_insensitive() {
+        assert!(emotion_to_prompt("EXCITED").is_some());
+        assert!(emotion_to_prompt("Cheerful").is_some());
+        assert!(emotion_to_prompt("  warm  ").is_some());
+    }
+
+    #[test]
+    fn emotion_unknown_returns_none() {
+        assert!(emotion_to_prompt("confused").is_none());
+        assert!(emotion_to_prompt("").is_none());
+    }
+
+    #[test]
+    fn all_documented_emotions_have_prompts() {
+        let emotions = ["excited", "serious", "warm", "angry", "sad", "cheerful", "dramatic", "curious", "thoughtful"];
+        for e in emotions {
+            assert!(emotion_to_prompt(e).is_some(), "Missing prompt for '{e}'");
+        }
+    }
+
+    // ── Audio helper tests ─────────────────────────────────────────
+
+    #[test]
+    fn pcm_to_wav_header() {
+        let pcm = vec![0u8; 100];
+        let wav = pcm_to_wav(&pcm, 24000);
+        assert_eq!(&wav[..4], b"RIFF");
+        assert_eq!(&wav[8..12], b"WAVE");
+        assert_eq!(&wav[12..16], b"fmt ");
+        assert_eq!(&wav[36..40], b"data");
+        assert_eq!(wav.len(), 44 + 100);
+    }
+
+    #[test]
+    fn pcm_to_wav_sample_rate() {
+        let wav = pcm_to_wav(&[], 24000);
+        let sr = u32::from_le_bytes([wav[24], wav[25], wav[26], wav[27]]);
+        assert_eq!(sr, 24000);
+    }
+
+    #[test]
+    fn generate_silence_correct_length() {
+        let wav = generate_silence_wav(1000); // 1 second
+        // 24000 samples/sec * 2 bytes/sample = 48000 bytes PCM + 44 header
+        assert_eq!(wav.len(), 48000 + 44);
+    }
+
+    #[test]
+    fn generate_silence_400ms() {
+        let wav = generate_silence_wav(400);
+        // 24000 * 0.4 = 9600 samples * 2 bytes = 19200 + 44 header
+        assert_eq!(wav.len(), 19200 + 44);
+    }
+
+    #[test]
+    fn generate_silence_is_zeros() {
+        let wav = generate_silence_wav(100);
+        // All PCM data after header should be zeros
+        for &b in &wav[44..] {
+            assert_eq!(b, 0);
+        }
+    }
+
+    // ── Voice grouping / ordering tests ────────────────────────────
+
+    #[test]
+    fn builtin_and_clone_separation() {
+        let script = r#"[A - vivian, calm] Line 1.
+[B - clone:custom, excited] Line 2.
+[C - ryan, serious] Line 3.
+[D - clone:custom, warm] Line 4."#;
+        let lines = parse_script(script);
+
+        let mut builtin = Vec::new();
+        let mut cloned = Vec::new();
+        for line in &lines {
+            if let ScriptLine::Dialogue { is_clone, voice, seg_id, .. } = line {
+                if *is_clone {
+                    cloned.push((*seg_id, voice.clone()));
+                } else {
+                    builtin.push((*seg_id, voice.clone()));
+                }
+            }
+        }
+        assert_eq!(builtin.len(), 2);
+        assert_eq!(cloned.len(), 2);
+        assert_eq!(builtin[0].1, "vivian");
+        assert_eq!(builtin[1].1, "ryan");
+        assert_eq!(cloned[0].1, "custom");
+        assert_eq!(cloned[1].1, "custom");
+    }
+
+    #[test]
+    fn voice_grouping_sort_order() {
+        // Simulate the sorting logic from handle_generate
+        let mut segments = vec![
+            (3u32, "vivian".to_string()),
+            (1, "ryan".to_string()),
+            (5, "vivian".to_string()),
+            (2, "ryan".to_string()),
+        ];
+        segments.sort_by(|a, b| a.1.cmp(&b.1).then(a.0.cmp(&b.0)));
+        // Should be: ryan(1), ryan(2), vivian(3), vivian(5)
+        assert_eq!(segments[0], (1, "ryan".to_string()));
+        assert_eq!(segments[1], (2, "ryan".to_string()));
+        assert_eq!(segments[2], (3, "vivian".to_string()));
+        assert_eq!(segments[3], (5, "vivian".to_string()));
+    }
+}
+
+// ── Main ───────────────────────────────────────────────────────────
+
+fn main() {
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() < 2 {
+        fail("Usage: mofa-podcast <tool_name>  (podcast_voices | podcast_generate)");
+    }
+
+    let mut input = String::new();
+    if std::io::stdin().read_to_string(&mut input).is_err() {
+        input = "{}".to_string();
+    }
+
+    match args[1].as_str() {
+        "podcast_voices" => handle_voices(&input),
+        "podcast_generate" => handle_generate(&input),
+        other => fail(&format!("Unknown tool: {other}. Available: podcast_voices, podcast_generate")),
+    }
+}

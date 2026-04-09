@@ -1,0 +1,53 @@
+[
+  {
+    "name": "mofa-skills",
+    "description": "AI-powered content creation suite: presentations, cards, comics, infographics, voice cloning, and office document processing",
+    "repo": "mofa-org/mofa-skills",
+    "skills": [
+      "mofa-cards",
+      "mofa",
+      "mofa-comic",
+      "mofa-fm",
+      "mofa-infographic",
+      "mofa-pdf",
+      "mofa-podcast",
+      "mofa-slides",
+      "mofa-xlsx"
+    ],
+    "requires": [
+      "git",
+      "cargo",
+      "ominix-api"
+    ],
+    "tags": [
+      "ai",
+      "pptx",
+      "image-gen",
+      "gemini",
+      "batch-api",
+      "comic",
+      "manga",
+      "xkcd",
+      "infographic",
+      "poster",
+      "tts",
+      "voice-cloning",
+      "speech",
+      "audio",
+      "qwen3-tts",
+      "emotion",
+      "podcast",
+      "multi-speaker",
+      "dialogue",
+      "talk-show",
+      "pdf",
+      "excel",
+      "xlsx",
+      "spreadsheet",
+      "slides",
+      "presentation",
+      "editable",
+      "vqa"
+    ]
+  }
+]
