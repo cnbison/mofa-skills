@@ -238,9 +238,11 @@ fn pcm_to_wav(pcm: &[u8], sample_rate: u32) -> Vec<u8> {
 }
 
 /// Try to convert WAV to MP3 using ffmpeg for smaller file size.
-/// Returns the MP3 path on success, or the original WAV path if ffmpeg is unavailable.
-fn try_convert_to_mp3(wav_path: &str) -> String {
-    let mp3_path = wav_path.replace(".wav", ".mp3");
+/// Returns the MP3 path on success, or the original WAV path if conversion is unavailable.
+fn try_convert_to_mp3(wav_path: &str, mp3_path: &str) -> String {
+    if !wav_path.ends_with(".wav") || wav_path == mp3_path {
+        return wav_path.to_string();
+    }
     let result = std::process::Command::new("ffmpeg")
         .args([
             "-y",
@@ -250,7 +252,7 @@ fn try_convert_to_mp3(wav_path: &str) -> String {
             "libmp3lame",
             "-q:a",
             "2",
-            &mp3_path,
+            mp3_path,
         ])
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
@@ -258,10 +260,61 @@ fn try_convert_to_mp3(wav_path: &str) -> String {
     match result {
         Ok(status) if status.success() => {
             let _ = std::fs::remove_file(wav_path);
-            mp3_path
+            mp3_path.to_string()
         }
         _ => wav_path.to_string(),
     }
+}
+
+fn default_tts_output_mp3_path(voice_tag: &str, text: &str) -> PathBuf {
+    let text_preview: String = text
+        .chars()
+        .take(20)
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect::<String>()
+        .trim_end_matches('_')
+        .to_string();
+    let filename = format!("{voice_tag}_{text_preview}_{}.mp3", timestamp());
+    if let Ok(work_dir) = std::env::var("OCTOS_WORK_DIR") {
+        let dir = Path::new(&work_dir);
+        let _ = std::fs::create_dir_all(dir);
+        return dir.join(filename);
+    }
+    match std::env::current_dir() {
+        Ok(dir) => dir.join(filename),
+        Err(_) => PathBuf::from(format!("/tmp/{filename}")),
+    }
+}
+
+fn resolve_tts_output_paths(
+    requested_output: Option<String>,
+    voice_tag: &str,
+    text: &str,
+) -> (String, String) {
+    let final_path = requested_output
+        .map(PathBuf::from)
+        .unwrap_or_else(|| default_tts_output_mp3_path(voice_tag, text));
+
+    let wav_path = if final_path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("wav"))
+    {
+        final_path.clone()
+    } else {
+        final_path.with_extension("wav")
+    };
+
+    (
+        wav_path.to_string_lossy().to_string(),
+        final_path.to_string_lossy().to_string(),
+    )
 }
 
 /// Call TTS endpoint, handle both streaming PCM and WAV responses.
@@ -463,36 +516,11 @@ fn handle_tts(input_json: &str) {
         fail(&e);
     }
 
-    // Save to OCTOS_WORK_DIR (inside profile data_dir) so send_file can access it
-    let output_path = input.output_path.unwrap_or_else(|| {
-        let voice_tag = input.voice.as_deref().unwrap_or("default");
-        let text_preview: String = input
-            .text
-            .chars()
-            .take(20)
-            .map(|c| {
-                if c.is_alphanumeric() || c == '-' {
-                    c
-                } else {
-                    '_'
-                }
-            })
-            .collect::<String>()
-            .trim_end_matches('_')
-            .to_string();
-        let filename = format!("{voice_tag}_{text_preview}_{}.mp3", timestamp());
-        if let Ok(work_dir) = std::env::var("OCTOS_WORK_DIR") {
-            let dir = Path::new(&work_dir);
-            let _ = std::fs::create_dir_all(dir);
-            return dir.join(&filename).to_string_lossy().to_string();
-        }
-        match std::env::current_dir() {
-            Ok(dir) => dir.join(&filename).to_string_lossy().to_string(),
-            Err(_) => format!("/tmp/{filename}"),
-        }
-    });
+    let voice_tag = input.voice.as_deref().unwrap_or("default");
+    let (wav_output_path, requested_output_path) =
+        resolve_tts_output_paths(input.output_path.clone(), voice_tag, &input.text);
 
-    if let Some(parent) = Path::new(&output_path).parent() {
+    if let Some(parent) = Path::new(&wav_output_path).parent() {
         if !parent.exists() {
             fail(&format!(
                 "Output directory does not exist: {}",
@@ -596,12 +624,16 @@ fn handle_tts(input_json: &str) {
         }
     };
 
-    if let Err(e) = std::fs::write(&output_path, &wav_bytes) {
-        fail(&format!("Failed to write {output_path}: {e}"));
+    if let Err(e) = std::fs::write(&wav_output_path, &wav_bytes) {
+        fail(&format!("Failed to write {wav_output_path}: {e}"));
     }
 
     let duration_secs = wav_bytes.len().saturating_sub(44) as f64 / 48000.0;
-    let final_path = try_convert_to_mp3(&output_path);
+    let final_path = if requested_output_path.ends_with(".wav") {
+        wav_output_path.clone()
+    } else {
+        try_convert_to_mp3(&wav_output_path, &requested_output_path)
+    };
     let voice_label = if resolve_custom_voice(&voice_name).is_some() {
         format!("{voice_name} (custom)")
     } else {
@@ -732,6 +764,35 @@ fn handle_voice_list(_input_json: &str) {
     }
 
     succeed(&output);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{resolve_tts_output_paths, try_convert_to_mp3};
+
+    #[test]
+    fn requested_mp3_uses_distinct_temp_wav() {
+        let (wav_path, final_path) =
+            resolve_tts_output_paths(Some("/tmp/sample.mp3".to_string()), "serena", "hello world");
+        assert_eq!(final_path, "/tmp/sample.mp3");
+        assert_eq!(wav_path, "/tmp/sample.wav");
+    }
+
+    #[test]
+    fn requested_wav_keeps_same_output_path() {
+        let (wav_path, final_path) =
+            resolve_tts_output_paths(Some("/tmp/sample.wav".to_string()), "serena", "hello");
+        assert_eq!(final_path, "/tmp/sample.wav");
+        assert_eq!(wav_path, "/tmp/sample.wav");
+    }
+
+    #[test]
+    fn mp3_conversion_refuses_in_place_non_wav_inputs() {
+        assert_eq!(
+            try_convert_to_mp3("/tmp/sample.mp3", "/tmp/sample.mp3"),
+            "/tmp/sample.mp3"
+        );
+    }
 }
 
 // ── fm_voice_delete ──────────────────────────────────────────────────
