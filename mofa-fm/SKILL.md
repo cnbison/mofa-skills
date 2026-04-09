@@ -1,7 +1,7 @@
 ---
 name: mofa-fm
 description: TTS and voice cloning. Triggers: voice, TTS, text to speech, 语音, 播报, read aloud.
-version: 0.4.1
+version: 0.4.2
 author: hagency
 always: false
 ---

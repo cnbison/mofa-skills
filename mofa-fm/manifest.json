@@ -1,6 +1,6 @@
 {
   "name": "mofa-fm",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "author": "hagency",
   "description": "Voice management and TTS with custom voice cloning via ominix-api",
   "timeout_secs": 1800,
