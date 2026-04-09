@@ -19,6 +19,7 @@ always: false
 Preset: vivian (default), serena, ryan, aiden, eric, dylan, uncle_fu, ono_anna, sohee
 
 Custom voices are saved via `fm_voice_save` and used by name in `fm_tts`.
+`fm_voice_save` accepts a short reference clip in WAV directly, or MP3/M4A/OGG/FLAC which will be converted to WAV before saving.
 
 ## Style prompt
 

@@ -102,7 +102,7 @@
           },
           "audio_path": {
             "type": "string",
-            "description": "Absolute path to the audio file to use as voice reference"
+            "description": "Absolute path to the audio file to use as voice reference. Supports WAV directly and auto-converts MP3/M4A/OGG/FLAC to WAV before saving."
           }
         },
         "required": [

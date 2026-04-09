@@ -70,13 +70,15 @@ fn voices_dir() -> PathBuf {
         return PathBuf::from(dir);
     }
     // Match voice platform skill: $OCTOS_DATA_DIR/voice_profiles
-    let data_dir = std::env::var("OCTOS_DATA_DIR")
-        .unwrap_or_else(|_| "/tmp".to_string());
+    let data_dir = std::env::var("OCTOS_DATA_DIR").unwrap_or_else(|_| "/tmp".to_string());
     PathBuf::from(data_dir).join("voice_profiles")
 }
 
 fn registry_path() -> PathBuf {
-    voices_dir().parent().unwrap_or(Path::new("/tmp")).join("voices.json")
+    voices_dir()
+        .parent()
+        .unwrap_or(Path::new("/tmp"))
+        .join("voices.json")
 }
 
 fn load_registry() -> VoiceRegistry {
@@ -117,6 +119,51 @@ fn resolve_custom_voice(name: &str) -> Option<PathBuf> {
 
 fn is_preset(name: &str) -> bool {
     PRESET_VOICES.contains(&name.to_lowercase().as_str())
+}
+
+fn is_wav_file(path: &Path) -> bool {
+    let Ok(bytes) = std::fs::read(path) else {
+        return false;
+    };
+    bytes.len() >= 12 && &bytes[..4] == b"RIFF" && &bytes[8..12] == b"WAVE"
+}
+
+fn normalize_reference_audio_to_wav(src: &Path, dest: &Path) -> Result<(), String> {
+    if is_wav_file(src) {
+        std::fs::copy(src, dest)
+            .map(|_| ())
+            .map_err(|e| format!("Failed to copy WAV audio file: {e}"))?;
+        return Ok(());
+    }
+
+    let output = std::process::Command::new("ffmpeg")
+        .args([
+            "-y",
+            "-i",
+            &src.to_string_lossy(),
+            "-vn",
+            "-acodec",
+            "pcm_s16le",
+            "-ar",
+            "24000",
+            "-ac",
+            "1",
+            &dest.to_string_lossy(),
+        ])
+        .output()
+        .map_err(|e| format!("Failed to start ffmpeg for audio conversion: {e}"))?;
+
+    if !output.status.success() || !is_wav_file(dest) {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        return Err(format!(
+            "Failed to convert audio to WAV. ffmpeg stderr: {} stdout: {}",
+            stderr.trim(),
+            stdout.trim()
+        ));
+    }
+
+    Ok(())
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -318,7 +365,13 @@ fn check_health(client: &reqwest::blocking::Client, base_url: &str) -> Result<()
 /// Strips build metadata (+hash) before comparing.
 fn version_gte(have: &str, need: &str) -> bool {
     let parse = |s: &str| -> Vec<u32> {
-        let base = s.split('+').next().unwrap_or(s).split('-').next().unwrap_or(s);
+        let base = s
+            .split('+')
+            .next()
+            .unwrap_or(s)
+            .split('-')
+            .next()
+            .unwrap_or(s);
         base.split('.').filter_map(|p| p.parse().ok()).collect()
     };
     let h = parse(have);
@@ -396,8 +449,17 @@ fn handle_tts(input_json: &str) {
     // Save to OCTOS_WORK_DIR (inside profile data_dir) so send_file can access it
     let output_path = input.output_path.unwrap_or_else(|| {
         let voice_tag = input.voice.as_deref().unwrap_or("default");
-        let text_preview: String = input.text.chars().take(20)
-            .map(|c| if c.is_alphanumeric() || c == '-' { c } else { '_' })
+        let text_preview: String = input
+            .text
+            .chars()
+            .take(20)
+            .map(|c| {
+                if c.is_alphanumeric() || c == '-' {
+                    c
+                } else {
+                    '_'
+                }
+            })
             .collect::<String>()
             .trim_end_matches('_')
             .to_string();
@@ -470,14 +532,22 @@ fn handle_tts(input_json: &str) {
             form = form.text("prompt", prompt.clone());
         }
         let endpoint = format!("{base_url}/v1/audio/tts/clone");
-        let resp = match client.post(&endpoint).timeout(Duration::from_secs(1800)).multipart(form).send() {
+        let resp = match client
+            .post(&endpoint)
+            .timeout(Duration::from_secs(1800))
+            .multipart(form)
+            .send()
+        {
             Ok(r) => r,
             Err(e) => fail(&format!("Clone request failed: {e}")),
         };
         let status = resp.status();
         if !status.is_success() {
             let t = resp.text().unwrap_or_default();
-            fail(&format!("Clone error (HTTP {status}): {}", truncate(&t, 200)));
+            fail(&format!(
+                "Clone error (HTTP {status}): {}",
+                truncate(&t, 200)
+            ));
         }
         let bytes = match resp.bytes() {
             Ok(b) => b.to_vec(),
@@ -574,11 +644,12 @@ fn handle_voice_save(input_json: &str) {
         fail(&format!("Failed to create voices directory: {e}"));
     }
 
-    // Copy audio file
+    // Normalize reference audio to a real WAV file so uploaded MP3/M4A/OGG
+    // samples work reliably with downstream voice cloning.
     let filename = format!("{name}.wav");
     let dest = dir.join(&filename);
-    if let Err(e) = std::fs::copy(src, &dest) {
-        fail(&format!("Failed to copy audio file: {e}"));
+    if let Err(e) = normalize_reference_audio_to_wav(src, &dest) {
+        fail(&e);
     }
 
     // Update registry
