@@ -1,6 +1,6 @@
 ---
 name: mofa-podcast
-description: Multi-speaker podcast generation with TTS. Triggers: podcast, 播客, multi-speaker audio, 多人对话, radio show, talk show.
+description: Multi-speaker podcast and dialogue generation with TTS voice cloning. Triggers: podcast, 播客, multi-speaker audio, 多人对话, 多人语音, radio show, talk show, 对话生成, 锵锵三人行, 两人对话, 三人对话, voice dialogue, 用XX的声音, 用XX和XX的风格, 声音模仿, 角色对话, 配音.
 version: 0.4.1
 author: hagency
 always: false
