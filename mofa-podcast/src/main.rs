@@ -619,6 +619,11 @@ fn handle_generate(input_json: &str) {
     // Convert to MP3
     let final_path = try_convert_to_mp3(&concat_wav);
 
+    // Ensure absolute path for files_to_send (crew needs absolute paths for auto-delivery)
+    let final_path = std::fs::canonicalize(&final_path)
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or(final_path);
+
     // Clean up segment files
     let _ = std::fs::remove_dir_all(&seg_dir);
 
