@@ -136,7 +136,7 @@ fn normalize_reference_audio_to_wav(src: &Path, dest: &Path) -> Result<(), Strin
         return Ok(());
     }
 
-    let output = std::process::Command::new("ffmpeg")
+    let ffmpeg = std::process::Command::new("ffmpeg")
         .args([
             "-y",
             "-i",
@@ -150,20 +150,37 @@ fn normalize_reference_audio_to_wav(src: &Path, dest: &Path) -> Result<(), Strin
             "1",
             &dest.to_string_lossy(),
         ])
-        .output()
-        .map_err(|e| format!("Failed to start ffmpeg for audio conversion: {e}"))?;
+        .output();
 
-    if !output.status.success() || !is_wav_file(dest) {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        return Err(format!(
-            "Failed to convert audio to WAV. ffmpeg stderr: {} stdout: {}",
-            stderr.trim(),
-            stdout.trim()
-        ));
+    if let Ok(output) = ffmpeg {
+        if output.status.success() && is_wav_file(dest) {
+            return Ok(());
+        }
+        let _ = std::fs::remove_file(dest);
     }
 
-    Ok(())
+    let afconvert = std::process::Command::new("afconvert")
+        .args([
+            "-f",
+            "WAVE",
+            "-d",
+            "LEI16@24000",
+            &src.to_string_lossy(),
+            &dest.to_string_lossy(),
+        ])
+        .output();
+
+    if let Ok(output) = afconvert {
+        if output.status.success() && is_wav_file(dest) {
+            return Ok(());
+        }
+        let _ = std::fs::remove_file(dest);
+    }
+
+    Err(
+        "Failed to convert audio to WAV. Neither ffmpeg nor afconvert produced a valid WAV file."
+            .to_string(),
+    )
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────
