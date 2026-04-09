@@ -510,14 +510,18 @@ fn handle_generate(input_json: &str) {
     let dialogue_count = lines.iter().filter(|l| matches!(l, ScriptLine::Dialogue { .. })).count();
     eprintln!("[podcast] Parsed {} script lines ({} dialogue segments)", lines.len(), dialogue_count);
 
-    // Separate dialogue lines into built-in and clone groups
+    // Separate dialogue lines into built-in and clone groups.
+    // Auto-detect: if a voice isn't a preset but exists in the clone registry, treat it as clone.
     let mut builtin_segments: Vec<(u32, String, String, String, String)> = Vec::new(); // (seg_id, voice, emotion, text, character)
     let mut clone_segments: Vec<(u32, String, String, String, String)> = Vec::new();
 
     for line in &lines {
         if let ScriptLine::Dialogue { seg_id, voice, is_clone, emotion, text, character, .. } = line {
             let entry = (*seg_id, voice.clone(), emotion.clone(), text.clone(), character.clone());
-            if *is_clone {
+            // If explicitly marked as clone, or if voice is not a preset but exists in clone registry
+            let is_actually_clone = *is_clone
+                || (!PRESET_VOICES.contains(&voice.as_str()) && resolve_custom_voice(voice).is_some());
+            if is_actually_clone {
                 clone_segments.push(entry);
             } else {
                 builtin_segments.push(entry);
