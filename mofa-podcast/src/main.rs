@@ -62,6 +62,46 @@ fn data_dir() -> PathBuf {
     }
 }
 
+fn work_dir() -> Option<PathBuf> {
+    std::env::var("OCTOS_WORK_DIR").ok().map(PathBuf::from)
+}
+
+fn resolve_workspace_relative_path(path: &str) -> PathBuf {
+    let candidate = PathBuf::from(path);
+    if candidate.is_absolute() {
+        return candidate;
+    }
+    if let Some(work_dir) = work_dir() {
+        let workspace_path = work_dir.join(&candidate);
+        if workspace_path.exists() {
+            return workspace_path;
+        }
+    }
+    candidate
+}
+
+fn resolve_output_dir(output_dir: Option<String>) -> PathBuf {
+    match output_dir {
+        Some(dir) => {
+            let dir_path = PathBuf::from(&dir);
+            if dir_path.is_absolute() {
+                dir_path
+            } else if let Some(work_dir) = work_dir() {
+                work_dir.join(dir_path)
+            } else {
+                dir_path
+            }
+        }
+        None => {
+            if let Some(work_dir) = work_dir() {
+                work_dir.join("skill-output/mofa-podcast")
+            } else {
+                PathBuf::from("skill-output/mofa-podcast")
+            }
+        }
+    }
+}
+
 fn load_registry() -> VoiceRegistry {
     let path = data_dir().join("voices.json");
     match std::fs::read_to_string(&path) {
@@ -146,6 +186,21 @@ fn generate_silence_wav(duration_ms: u32) -> Vec<u8> {
     let num_samples = sample_rate * duration_ms / 1000;
     let pcm = vec![0u8; (num_samples * 2) as usize]; // 16-bit silence
     pcm_to_wav(&pcm, sample_rate)
+}
+
+fn audio_duration_ms(bytes: &[u8], sample_rate: u32) -> u32 {
+    let pcm_bytes = if bytes.len() >= 44 && &bytes[..4] == b"RIFF" && &bytes[8..12] == b"WAVE" {
+        bytes.len().saturating_sub(44)
+    } else {
+        bytes.len()
+    };
+    ((pcm_bytes / 2) as u32)
+        .saturating_mul(1000)
+        .saturating_div(sample_rate)
+}
+
+fn has_meaningful_tts_audio(bytes: &[u8]) -> bool {
+    audio_duration_ms(bytes, 24_000) >= 150
 }
 
 /// Resolve ffmpeg binary path — checks PATH first, then common install locations.
@@ -415,6 +470,10 @@ fn generate_tts_segment(
         }
     };
 
+    if !has_meaningful_tts_audio(&wav_bytes) {
+        return Err("TTS returned empty or too-short audio".to_string());
+    }
+
     std::fs::write(output_path, &wav_bytes)
         .map_err(|e| format!("Failed to write {output_path}: {e}"))?;
     Ok(())
@@ -467,38 +526,18 @@ fn handle_generate(input_json: &str) {
     let script = if let Some(s) = input.script {
         s
     } else if let Some(ref path) = input.script_path {
-        // Resolve relative paths against OCTOS_WORK_DIR (crew sets this to user workspace)
-        let resolved = if !Path::new(path).is_absolute() {
-            if let Ok(work_dir) = std::env::var("OCTOS_WORK_DIR") {
-                let full = Path::new(&work_dir).join(path);
-                if full.exists() {
-                    full.to_string_lossy().to_string()
-                } else {
-                    path.clone()
-                }
-            } else {
-                path.clone()
-            }
-        } else {
-            path.clone()
-        };
+        let resolved = resolve_workspace_relative_path(path);
         match std::fs::read_to_string(&resolved) {
             Ok(s) => s,
-            Err(e) => fail(&format!("Failed to read script file '{}': {e}", resolved)),
+            Err(e) => fail(&format!("Failed to read script file '{}': {e}", resolved.display())),
         }
     } else {
         fail("Either 'script' or 'script_path' must be provided");
     };
 
     // Setup output directory
-    let output_dir = input.output_dir.unwrap_or_else(|| {
-        if let Ok(work_dir) = std::env::var("OCTOS_WORK_DIR") {
-            format!("{work_dir}/skill-output/mofa-podcast")
-        } else {
-            "skill-output/mofa-podcast".to_string()
-        }
-    });
-    let seg_dir = format!("{output_dir}/segments");
+    let output_dir = resolve_output_dir(input.output_dir);
+    let seg_dir = output_dir.join("segments");
     let _ = std::fs::create_dir_all(&seg_dir);
 
     // Parse script
@@ -544,12 +583,12 @@ fn handle_generate(input_json: &str) {
     // Phase 1: Built-in voices
     eprintln!("[podcast] Phase 1: Generating {} built-in voice segments...", builtin_segments.len());
     for (seg_id, voice, emotion, text, character) in &builtin_segments {
-        let seg_path = format!("{seg_dir}/{voice}_seg_{seg_id:03}.wav");
+        let seg_path = seg_dir.join(format!("{voice}_seg_{seg_id:03}.wav"));
         completed += 1;
         eprintln!("[podcast] [{completed}/{total}] {character} ({voice}, {emotion}): {}...",
             &text.chars().take(20).collect::<String>());
 
-        match generate_tts_segment(&client, &base_url, voice, false, text, emotion, &seg_path) {
+        match generate_tts_segment(&client, &base_url, voice, false, text, emotion, &seg_path.to_string_lossy()) {
             Ok(()) => {},
             Err(e) => {
                 eprintln!("[podcast] ERROR seg_{seg_id:03}: {e}");
@@ -562,12 +601,12 @@ fn handle_generate(input_json: &str) {
     if !clone_segments.is_empty() {
         eprintln!("[podcast] Phase 2: Generating {} cloned voice segments...", clone_segments.len());
         for (seg_id, voice, emotion, text, character) in &clone_segments {
-            let seg_path = format!("{seg_dir}/{voice}_seg_{seg_id:03}.wav");
+            let seg_path = seg_dir.join(format!("{voice}_seg_{seg_id:03}.wav"));
             completed += 1;
             eprintln!("[podcast] [{completed}/{total}] {character} (clone:{voice}, {emotion}): {}...",
                 &text.chars().take(20).collect::<String>());
 
-            match generate_tts_segment(&client, &base_url, voice, true, text, emotion, &seg_path) {
+            match generate_tts_segment(&client, &base_url, voice, true, text, emotion, &seg_path.to_string_lossy()) {
                 Ok(()) => {},
                 Err(e) => {
                     eprintln!("[podcast] ERROR seg_{seg_id:03}: {e}");
@@ -580,32 +619,36 @@ fn handle_generate(input_json: &str) {
     // Phase 3: Assemble timeline
     eprintln!("[podcast] Phase 3: Assembling timeline...");
     let mut timeline_wavs: Vec<String> = Vec::new();
+    let mut assembled_dialogue_segments = 0usize;
 
     for line in &lines {
         match line {
             ScriptLine::Dialogue { seg_id, voice, .. } => {
-                let seg_path = format!("{seg_dir}/{voice}_seg_{seg_id:03}.wav");
-                if Path::new(&seg_path).exists() {
-                    timeline_wavs.push(seg_path);
+                let seg_path = seg_dir.join(format!("{voice}_seg_{seg_id:03}.wav"));
+                if seg_path.exists() {
+                    timeline_wavs.push(seg_path.to_string_lossy().to_string());
+                    assembled_dialogue_segments += 1;
                     // Insert inter-speaker pause (400ms)
-                    let pause_path = format!("{seg_dir}/pause_after_{seg_id:03}.wav");
+                    let pause_path = seg_dir.join(format!("pause_after_{seg_id:03}.wav"));
                     let silence = generate_silence_wav(400);
                     let _ = std::fs::write(&pause_path, &silence);
-                    timeline_wavs.push(pause_path);
+                    timeline_wavs.push(pause_path.to_string_lossy().to_string());
+                } else {
+                    errors.push(format!("seg_{seg_id:03}: missing generated dialogue audio"));
                 }
             }
             ScriptLine::Pause { duration_s } => {
-                let pause_path = format!("{seg_dir}/pause_{}.wav", timestamp());
+                let pause_path = seg_dir.join(format!("pause_{}.wav", timestamp()));
                 let silence = generate_silence_wav(duration_s * 1000);
                 let _ = std::fs::write(&pause_path, &silence);
-                timeline_wavs.push(pause_path);
+                timeline_wavs.push(pause_path.to_string_lossy().to_string());
             }
             ScriptLine::Bgm { duration_s, .. } => {
                 // BGM placeholder: insert silence for now (music mixed in post-production)
-                let bgm_path = format!("{seg_dir}/bgm_placeholder_{}.wav", timestamp());
+                let bgm_path = seg_dir.join(format!("bgm_placeholder_{}.wav", timestamp()));
                 let silence = generate_silence_wav(duration_s * 1000);
                 let _ = std::fs::write(&bgm_path, &silence);
-                timeline_wavs.push(bgm_path);
+                timeline_wavs.push(bgm_path.to_string_lossy().to_string());
             }
         }
     }
@@ -614,14 +657,22 @@ fn handle_generate(input_json: &str) {
         fail("No audio segments were generated successfully");
     }
 
+    if assembled_dialogue_segments != dialogue_count {
+        let _ = std::fs::remove_dir_all(&seg_dir);
+        fail(&format!(
+            "Podcast generation incomplete: expected {dialogue_count} dialogue segments, but only assembled {assembled_dialogue_segments}. Failed segments:\n{}",
+            errors.join("\n")
+        ));
+    }
+
     // Concatenate all WAVs
-    let concat_wav = format!("{output_dir}/podcast_full_{}.wav", timestamp());
-    if let Err(e) = concatenate_wavs(&timeline_wavs, &concat_wav) {
+    let concat_wav = output_dir.join(format!("podcast_full_{}.wav", timestamp()));
+    if let Err(e) = concatenate_wavs(&timeline_wavs, &concat_wav.to_string_lossy()) {
         fail(&format!("Concatenation failed: {e}"));
     }
 
     // Convert to MP3
-    let final_path = try_convert_to_mp3(&concat_wav);
+    let final_path = try_convert_to_mp3(&concat_wav.to_string_lossy());
 
     // Ensure absolute path for files_to_send (crew needs absolute paths for auto-delivery)
     let final_path = std::fs::canonicalize(&final_path)
@@ -650,7 +701,7 @@ fn handle_generate(input_json: &str) {
 
     let out = json!({
         "output": output_msg,
-        "success": errors.is_empty() || (errors.len() < dialogue_count),
+        "success": errors.is_empty(),
         "files_to_send": [&final_path]
     });
     println!("{out}");
