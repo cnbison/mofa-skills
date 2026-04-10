@@ -1,0 +1,49 @@
+// SPDX-License-Identifier: Apache-2.0
+
+// mofa-publish Architecture Diagram
+// Visual reference — not an executable pipeline
+
+digraph PublishArchitecture {
+    graph [label="mofa-publish Architecture", fontsize=14, fontname="Helvetica"]
+    node [shape=box, fontname="Helvetica", fontsize=10, style=filled]
+    edge [fontname="Helvetica", fontsize=9]
+
+    // Input
+    Site [label="Static Site\ndocs/ | dist/ | out/\n(from mofa-site)", shape=ellipse, fillcolor=lightblue]
+
+    // Pipeline
+    Detect [label="Detect\n• Find index.html\n• Count files\n• Detect framework", fillcolor=lightyellow]
+    Prepare [label="Prepare\n• Create repo (GH)\n• Test SSH (Mini)\n• .nojekyll, CNAME", fillcolor=lightyellow]
+    Deploy [label="Deploy\n• git push (GH)\n• scp (Mini)", fillcolor=lightgreen]
+    Verify [label="Verify\n• curl HTTP 200\n• Report live URL", fillcolor=lightpink]
+
+    // Targets
+    subgraph cluster_targets {
+        label="Deploy Targets"
+        style=dashed; color=gray
+        GH [label="GitHub Pages\n<org>.github.io/<slug>/", fillcolor="#E3F2FD"]
+        Mini1 [label="Mac Mini 1\ncrew.ominix.io/sites/<slug>/", fillcolor="#E8F5E9"]
+        Mini3 [label="Mac Mini 3\noctos.ominix.io/sites/<slug>/", fillcolor="#E8F5E9"]
+    }
+
+    // External services
+    GitHub [label="GitHub API\ngh CLI", shape=cylinder, fillcolor=lightcyan]
+    SSH [label="SSH/SCP\ncloud@69.194.3.1XX", shape=cylinder, fillcolor=lightcyan]
+    Caddy [label="Caddy\nfile_server\nTLS auto", shape=cylinder, fillcolor=lightcyan]
+
+    // Flow
+    Site -> Detect -> Prepare -> Deploy -> Verify
+
+    // Target branching
+    Deploy -> GH [label="github-pages"]
+    Deploy -> Mini1 [label="mini (mini1)"]
+    Deploy -> Mini3 [label="mini (mini3)"]
+
+    // External connections
+    Prepare -> GitHub [style=dashed, color=gray]
+    Prepare -> SSH [style=dashed, color=gray]
+    Deploy -> GitHub [style=dashed, color=gray]
+    Deploy -> SSH [style=dashed, color=gray]
+    Mini1 -> Caddy [style=dashed, color=gray]
+    Mini3 -> Caddy [style=dashed, color=gray]
+}

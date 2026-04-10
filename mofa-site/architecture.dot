@@ -1,0 +1,48 @@
+// SPDX-License-Identifier: Apache-2.0
+
+// mofa-site Architecture Diagram
+// Visual reference — not an executable pipeline
+
+digraph SiteArchitecture {
+    graph [label="mofa-site Architecture", fontsize=14, fontname="Helvetica"]
+    node [shape=box, fontname="Helvetica", fontsize=10, style=filled]
+    edge [fontname="Helvetica", fontsize=9]
+
+    // Input
+    Content [label="Content Package\n├── transcript.txt\n├── metadata.json\n└── images/", shape=ellipse, fillcolor=lightblue]
+
+    // Pipeline stages
+    Plan [label="Plan\n• Analyze content\n• Structure pages\n• Choose components", fillcolor=lightyellow]
+    Expand [label="Expand\n• Transcript → formal prose\n• LaTeX math\n• Bilingual", fillcolor=lightgreen]
+    Visualize [label="Visualize\n• Desmos graph configs\n• D3.js SVG animations\n• Interactive sliders", fillcolor=lightgreen]
+    Assemble [label="Assemble\n• _quarto.yml\n• styles.css\n• index.qmd\n• navigation", fillcolor=lightyellow]
+    Build [label="Build\n• quarto render\n• Validate output", fillcolor=lightpink]
+
+    // Templates
+    subgraph cluster_templates {
+        label="Templates"
+        style=dashed; color=gray
+        Quarto [label="quarto-lesson\nDesmos + D3 + LaTeX", fillcolor="#E8F5E9"]
+        Notebook [label="quarto-notebook\nCode cells + narrative", fillcolor="#E3F2FD"]
+        Astro [label="astro-site\nStatic landing + docs", fillcolor="#FFF3E0"]
+        Nextjs [label="nextjs-app\nApp Router + export", fillcolor="#FCE4EC"]
+        ReactVite [label="react-vite\nFast prototype shell", fillcolor="#EDE7F6"]
+    }
+
+    // Output
+    Output [label="Static Site\n├── docs/ (HTML)\n├── lessons/ (source)\n└── images/", shape=ellipse, fillcolor=lightblue]
+
+    // Downstream
+    Publish [label="mofa-publish\n→ GitHub Pages\n→ Mac Mini", shape=ellipse, fillcolor="#E8E8E8"]
+
+    // Flow
+    Content -> Plan -> Expand -> Visualize -> Assemble -> Build -> Output
+    Output -> Publish
+
+    // Template selection
+    Plan -> Quarto [style=dashed, label="default"]
+    Plan -> Notebook [style=dashed]
+    Plan -> Astro [style=dashed]
+    Plan -> Nextjs [style=dashed]
+    Plan -> ReactVite [style=dashed]
+}

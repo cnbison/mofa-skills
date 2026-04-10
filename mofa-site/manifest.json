@@ -1,0 +1,65 @@
+{
+  "name": "mofa-site",
+  "version": "0.1.0",
+  "author": "hagency",
+  "description": "Build or scaffold websites from structured content. Quarto lesson generation is fully implemented; astro-site, nextjs-app, and react-vite are extracted starter templates exposed through the bootstrap helper and a server-backed three-panel studio.",
+  "timeout_secs": 3600,
+  "requires": {
+    "bins": [
+      "quarto",
+      "node"
+    ]
+  },
+  "tools": [
+    {
+      "name": "mofa_site",
+      "description": "Build a static Quarto lesson site from content, or scaffold extracted starter templates for Astro, Next.js, and React/Vite.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "content_dir": {
+            "type": "string",
+            "description": "Directory with transcript.txt, images/, metadata.json (mofa-youtube output or manual content)"
+          },
+          "template": {
+            "type": "string",
+            "description": "Site template. `quarto-lesson` is fully implemented end-to-end. `astro-site`, `nextjs-app`, and `react-vite` are scaffold starters extracted from existing site patterns.",
+            "default": "quarto-lesson",
+            "enum": [
+              "quarto-lesson",
+              "astro-site",
+              "nextjs-app",
+              "react-vite"
+            ]
+          },
+          "title": {
+            "type": "string",
+            "description": "Site title (auto-detected from metadata.json if not provided)"
+          },
+          "language": {
+            "type": "string",
+            "default": "en",
+            "description": "Content language: en, zh, or bilingual"
+          },
+          "out_dir": {
+            "type": "string",
+            "description": "Where to write the site (default: content_dir/site/)"
+          },
+          "interactive": {
+            "type": "boolean",
+            "default": true,
+            "description": "Include Desmos/D3 interactive elements (quarto-lesson only)"
+          },
+          "theme": {
+            "type": "string",
+            "default": "cosmo",
+            "description": "Quarto HTML theme"
+          }
+        },
+        "required": [
+          "content_dir"
+        ]
+      }
+    }
+  ]
+}

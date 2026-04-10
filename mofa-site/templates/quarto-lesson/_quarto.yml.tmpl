@@ -1,0 +1,25 @@
+project:
+  type: website
+  output-dir: docs
+
+website:
+  title: "{{title_yaml}}"
+  navbar:
+    left:
+      - href: index.qmd
+        text: Home
+      {{#if bilingual}}
+      - href: index-zh.qmd
+        text: 中文版
+      {{/if}}
+      - href: lessons.qmd
+        text: Lessons
+
+format:
+  html:
+    theme: {{theme}}
+    css: styles.css
+    toc: true
+    include-in-header:
+      text: |
+        <script src="https://d3js.org/d3.v7.min.js"></script>

@@ -1,0 +1,158 @@
+---
+title: "The Essence of Calculus"
+subtitle: "Chapter 1"
+date: 2023-04-01
+---
+
+This lesson develops the foundational intuition behind calculus through a single
+geometric question: why is the area of a circle $\pi r^2$? Through this lens,
+we introduce the three central ideas of calculus — integrals, derivatives, and
+the fundamental theorem connecting them.
+
+::: {.callout-note collapse="true"}
+## Prerequisites
+
+- Familiarity with the area formulas for basic geometric shapes (rectangles, triangles)
+- Understanding of the concept of a function $f(x)$
+- Comfort with the notation $\sum$ for finite sums
+:::
+
+## Topics Covered
+
+- Approximating circular area via concentric ring decomposition
+- The integral as the limit of Riemann sums
+- The derivative as instantaneous rate of change
+- The Fundamental Theorem of Calculus: integration and differentiation as inverse operations
+
+## Lecture Video
+
+```{=html}
+<div class="video-container">
+  <iframe src="https://www.youtube.com/embed/WUvTyaaNkzM" title="The essence of calculus" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
+</div>
+```
+
+## Key Video Frames
+
+![Concentric ring decomposition of a circle](../images/frame-01.png)
+
+![Unwrapping rings into rectangles under the graph of $2\pi r$](../images/frame-02.png)
+
+## Key Concepts
+
+### Approximating the Area of a Circle
+
+We begin with a circle of radius $R$ and seek to determine its area. The strategy
+is to decompose the circle into many concentric rings, each of inner radius $r$
+and infinitesimal thickness $dr$. When we "unroll" each ring, it forms a thin
+rectangle of width $2\pi r$ (the circumference) and height $dr$.
+
+The area of each such ring is therefore approximately
+
+$$
+dA = 2\pi r \, dr.
+$$
+
+Summing over all rings from $r = 0$ to $r = R$, we obtain the total area as
+
+$$
+A = \int_0^R 2\pi r \, dr.
+$$
+
+### Interactive Desmos Graph: Ring Decomposition
+
+```{=html}
+<div id="calc1" class="desmos-container"></div>
+<script src="https://www.desmos.com/api/v1.9/calculator.js?apiKey=dcb31709b452b1cf9dc26972add0fda6"></script>
+<script>
+  var calc1 = Desmos.GraphingCalculator(document.getElementById('calc1'), {
+    expressions: true, settingsMenu: false, xAxisLabel: 'r', yAxisLabel: 'f(r)'
+  });
+  calc1.setExpression({ id: 'line', latex: 'y = 2\\pi x', color: '#2d70b3' });
+  calc1.setExpression({ id: 'R', latex: 'R = 3', sliderBounds: { min: 0.5, max: 5, step: 0.1 } });
+  calc1.setExpression({ id: 'n', latex: 'n = 10', sliderBounds: { min: 1, max: 50, step: 1 } });
+  calc1.setExpression({ id: 'dr', latex: 'd_r = \\frac{R}{n}' });
+  calc1.setExpression({ id: 'rects', latex: '0 \\le y \\le 2\\pi \\operatorname{floor}\\left(\\frac{x}{d_r}\\right) d_r \\left\\{0 \\le x \\le R\\right\\}', color: '#388c46', fillOpacity: 0.3 });
+  calc1.setExpression({ id: 'area_label', latex: 'A = \\pi R^2', color: '#c74440' });
+  calc1.setMathBounds({ left: -0.5, right: 6, bottom: -2, top: 35 });
+</script>
+```
+
+### D3 Visualization: Riemann Sum Approximation
+
+```{=html}
+<div class="d3-container">
+  <div id="riemann-viz"></div>
+  <div class="d3-controls">
+    <label>Rectangles: <input type="range" id="n-slider" min="4" max="100" value="10"></label>
+    <span class="value-display" id="n-display">n = 10</span>
+    <button id="animate-btn">Animate</button>
+  </div>
+</div>
+<script>
+(function() {
+  const width = 600, height = 400;
+  const margin = {top: 20, right: 30, bottom: 40, left: 50};
+  const inner = {w: width - margin.left - margin.right, h: height - margin.top - margin.bottom};
+
+  const svg = d3.select('#riemann-viz').append('svg')
+    .attr('viewBox', `0 0 ${width} ${height}`);
+  const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
+
+  const R = 3;
+  const f = r => 2 * Math.PI * r;
+  const x = d3.scaleLinear().domain([0, R + 0.5]).range([0, inner.w]);
+  const y = d3.scaleLinear().domain([0, f(R) + 2]).range([inner.h, 0]);
+
+  // Axes
+  g.append('g').attr('transform', `translate(0,${inner.h})`).call(d3.axisBottom(x));
+  g.append('g').call(d3.axisLeft(y));
+
+  // Function line
+  const line = d3.line().x(d => x(d)).y(d => y(f(d)));
+  const pts = d3.range(0, R + 0.01, 0.05);
+  g.append('path').datum(pts).attr('d', line)
+    .attr('fill', 'none').attr('stroke', '#2d70b3').attr('stroke-width', 2);
+
+  // Rectangles group
+  const barsG = g.append('g');
+
+  function update(n) {
+    const dr = R / n;
+    const data = d3.range(n).map(i => ({x: i * dr, w: dr, h: f(i * dr)}));
+    const bars = barsG.selectAll('rect').data(data);
+    bars.enter().append('rect').merge(bars)
+      .attr('x', d => x(d.x)).attr('width', x(dr) - x(0))
+      .attr('y', d => y(d.h)).attr('height', d => inner.h - y(d.h))
+      .attr('fill', '#388c46').attr('opacity', 0.3).attr('stroke', '#388c46');
+    bars.exit().remove();
+  }
+
+  update(10);
+
+  d3.select('#n-slider').on('input', function() {
+    const n = +this.value;
+    d3.select('#n-display').text('n = ' + n);
+    update(n);
+  });
+
+  d3.select('#animate-btn').on('click', function() {
+    let n = 4;
+    const timer = d3.interval(() => {
+      if (n > 100) { timer.stop(); return; }
+      d3.select('#n-slider').property('value', n);
+      d3.select('#n-display').text('n = ' + n);
+      update(n);
+      n = Math.min(n + 2, 101);
+    }, 80);
+  });
+})();
+</script>
+```
+
+::: {.key-formula}
+### Summary
+
+The area of a circle can be derived by decomposing it into concentric rings
+and computing the integral $A = \int_0^R 2\pi r \, dr = \pi R^2$.
+:::

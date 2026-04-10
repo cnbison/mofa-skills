@@ -1,0 +1,97 @@
+{
+  "name": "mofa-publish",
+  "version": "0.1.0",
+  "author": "hagency",
+  "description": "Deploy a built static site to GitHub Pages or Mac Mini hosting and verify the live URL.",
+  "timeout_secs": 600,
+  "requires_network": true,
+  "requires": {
+    "bins": [
+      "gh",
+      "git",
+      "curl",
+      "ssh",
+      "scp"
+    ]
+  },
+  "tools": [
+    {
+      "name": "mofa_publish",
+      "description": "Deploy a static site to GitHub Pages or Mac Mini hosting. Handles repo creation, branch setup, Pages configuration, file transfer, and verification.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "site_dir": {
+            "type": "string",
+            "description": "Path to built static site directory (must contain index.html)"
+          },
+          "target": {
+            "type": "string",
+            "description": "Deployment target: github-pages or mini",
+            "default": "github-pages",
+            "enum": [
+              "github-pages",
+              "mini"
+            ]
+          },
+          "slug": {
+            "type": "string",
+            "description": "Deployment name. For GitHub Pages this should usually match the repo basename; for Mini it becomes the /sites/<slug>/ path."
+          },
+          "repo": {
+            "type": "string",
+            "description": "GitHub repo in owner/name format (required for github-pages target). The public Pages URL is derived from this repo name."
+          },
+          "repo_root": {
+            "type": "string",
+            "description": "Optional local repository root where the generated deploy workflow should also be written when setup_ci is true"
+          },
+          "mini_host": {
+            "type": "string",
+            "description": "Which Mac Mini to deploy to (mini target only)",
+            "default": "mini1",
+            "enum": [
+              "mini1",
+              "mini3"
+            ]
+          },
+          "mini_user": {
+            "type": "string",
+            "description": "SSH username for the mini target",
+            "default": "cloud"
+          },
+          "ssh_key": {
+            "type": "string",
+            "description": "Optional SSH private key path for the mini target"
+          },
+          "ssh_password_env": {
+            "type": "string",
+            "description": "Optional environment variable name containing the SSH password for the mini target. Uses sshpass when set."
+          },
+          "ssh_port": {
+            "type": "integer",
+            "description": "SSH port for the mini target",
+            "default": 22
+          },
+          "remote_root": {
+            "type": "string",
+            "description": "Remote web root for the mini target. Defaults to /Users/<mini_user>/octos-web"
+          },
+          "cname": {
+            "type": "string",
+            "description": "Custom domain for GitHub Pages (optional)"
+          },
+          "setup_ci": {
+            "type": "boolean",
+            "default": false,
+            "description": "Generate GitHub Actions workflow for auto-deploy on push. Publishes the workflow to GitHub and optionally mirrors it into repo_root."
+          }
+        },
+        "required": [
+          "site_dir",
+          "slug"
+        ]
+      }
+    }
+  ]
+}

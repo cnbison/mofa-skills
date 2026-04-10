@@ -1,0 +1,20 @@
+---
+interface Props {
+  eyebrow: string;
+  title: string;
+  body: string;
+}
+
+const { eyebrow, title, body } = Astro.props;
+const basePath = '{{base_path}}' === '/' ? '' : '{{base_path}}';
+---
+
+<section class="hero shell">
+  <p class="eyebrow">{eyebrow}</p>
+  <h1>{title}</h1>
+  <p class="lede">{body}</p>
+  <div class="hero-actions">
+    <a class="button button-primary" href={`${basePath}/about/`}>Explore the structure</a>
+    <a class="button button-secondary" href="#features">See feature cards</a>
+  </div>
+</section>

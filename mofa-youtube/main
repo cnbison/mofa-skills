@@ -1,0 +1,220 @@
+#!/bin/bash
+# mofa-youtube: Download YouTube video OR accept local audio, then transcribe via ASR.
+# Protocol: argv[1]=tool_name, stdin=JSON args, stdout=JSON result.
+set -euo pipefail
+
+TOOL_NAME="${1:-mofa_youtube}"
+ARGS=$(cat)
+
+# Parse args
+url=$(echo "$ARGS" | jq -r '.url // empty')
+audio_path=$(echo "$ARGS" | jq -r '.audio_path // empty')
+work_dir=$(echo "$ARGS" | jq -r '.work_dir // empty')
+language=$(echo "$ARGS" | jq -r '.language // "auto"')
+keep_video=$(echo "$ARGS" | jq -r '.keep_video // false')
+
+if [ -z "$url" ] && [ -z "$audio_path" ]; then
+  echo '{"output":"Error: url or audio_path is required","success":false}'
+  exit 0
+fi
+
+# Default work_dir
+if [ -z "$work_dir" ]; then
+  work_dir="skill-output/mofa-youtube-$(date +%Y%m%d-%H%M%S)"
+fi
+mkdir -p "$work_dir"
+work_dir="$(cd "$work_dir" && pwd)"
+
+# --- Determine source ---
+title=""
+source_label=""
+video_path=""
+
+if [ -n "$url" ]; then
+  # YouTube mode: download video
+  echo "Downloading: $url" >&2
+  yt-dlp -f 'bestvideo[height<=720]+bestaudio/best[height<=720]' \
+    --merge-output-format mp4 \
+    --write-info-json \
+    --no-playlist \
+    -o "$work_dir/video.mp4" \
+    "$url" >&2 2>&1 || {
+    echo '{"output":"Error: yt-dlp download failed","success":false}'
+    exit 0
+  }
+  video_path="$work_dir/video.mp4"
+  source_label="$url"
+
+  if [ -f "$work_dir/video.info.json" ]; then
+    title=$(jq -r '.title // "Untitled"' "$work_dir/video.info.json")
+    # Auto-detect language from YouTube metadata
+    if [ "$language" = "auto" ]; then
+      yt_lang=$(jq -r '.language // empty' "$work_dir/video.info.json" | cut -d- -f1)
+      if [ -n "$yt_lang" ]; then
+        language="$yt_lang"
+        echo "Detected language from YouTube: $language" >&2
+      fi
+    fi
+  fi
+
+  # Extract audio from video
+  echo "Extracting audio..." >&2
+  ffmpeg -y -i "$video_path" \
+    -vn -acodec pcm_s16le -ar 16000 -ac 1 \
+    "$work_dir/audio.wav" 2>/dev/null || {
+    echo '{"output":"Error: ffmpeg audio extraction failed","success":false}'
+    exit 0
+  }
+else
+  # Local audio mode
+  if [ ! -f "$audio_path" ]; then
+    echo "{\"output\":\"Error: file not found: $audio_path\",\"success\":false}"
+    exit 0
+  fi
+  audio_path="$(cd "$(dirname "$audio_path")" && pwd)/$(basename "$audio_path")"
+  title=$(basename "$audio_path" | sed 's/\.[^.]*$//')
+  source_label="$audio_path"
+
+  # Convert to WAV
+  echo "Converting to WAV..." >&2
+  ffmpeg -y -i "$audio_path" \
+    -vn -acodec pcm_s16le -ar 16000 -ac 1 \
+    "$work_dir/audio.wav" 2>/dev/null || {
+    echo '{"output":"Error: ffmpeg conversion failed","success":false}'
+    exit 0
+  }
+fi
+
+dur=$(ffprobe -v quiet -show_entries format=duration -of csv=p=0 "$work_dir/audio.wav" | cut -d. -f1)
+echo "Duration: ${dur}s" >&2
+
+# --- Transcribe via ASR ---
+ASR_URL="${ASR_URL:-http://localhost:8080/v1/audio/transcriptions}"
+ASR_MODEL="${ASR_MODEL:-qwen3-asr}"
+CHUNK_SECS=240
+
+format_chunk_time() {
+  local secs=$1
+  local h=$((secs / 3600))
+  local m=$(( (secs % 3600) / 60 ))
+  local s=$((secs % 60))
+  if [ $h -gt 0 ]; then
+    printf "%d:%02d:%02d" "$h" "$m" "$s"
+  else
+    printf "%d:%02d" "$m" "$s"
+  fi
+}
+
+echo "Transcribing ($dur seconds, chunk=${CHUNK_SECS}s)..." >&2
+chunk_num=0
+declare -a chunk_texts=()
+declare -a chunk_starts=()
+
+for (( start=0; start<dur; start+=CHUNK_SECS )); do
+  chunk_num=$((chunk_num + 1))
+  t=$((dur - start))
+  if [ $t -gt $CHUNK_SECS ]; then t=$CHUNK_SECS; fi
+
+  echo "  Chunk $chunk_num [${start}s-$((start+t))s]..." >&2
+
+  ffmpeg -y -i "$work_dir/audio.wav" -ss "$start" -t "$t" \
+    -acodec pcm_s16le -ar 16000 -ac 1 /tmp/asr_chunk.wav 2>/dev/null
+
+  base64 < /tmp/asr_chunk.wav | tr -d '\n' > /tmp/asr_chunk.b64
+  {
+    printf '{"file":"'
+    cat /tmp/asr_chunk.b64
+    printf '","model":"%s","language":"%s"}' "$ASR_MODEL" "$language"
+  } > /tmp/asr_req.json
+
+  text=$(curl -s -X POST "$ASR_URL" \
+    -H 'Content-Type: application/json' \
+    --max-time 300 \
+    -d @/tmp/asr_req.json | jq -r '.text // empty')
+
+  if [ -n "$text" ]; then
+    chunk_texts+=("$text")
+    chunk_starts+=("$start")
+  fi
+done
+
+rm -f /tmp/asr_chunk.wav /tmp/asr_chunk.b64 /tmp/asr_req.json
+
+# Count words
+total_text=""
+for t in "${chunk_texts[@]}"; do
+  total_text="$total_text $t"
+done
+word_count=$(echo "$total_text" | wc -w | tr -d ' ')
+echo "Transcript: $word_count words" >&2
+
+# --- Write markdown transcript ---
+{
+  echo "# Transcript: ${title}"
+  echo ""
+  echo "- **Source**: \`$source_label\`"
+  echo "- **Duration**: $(format_chunk_time "$dur")"
+  echo "- **Words**: ${word_count}"
+  echo "- **Language**: ${language}"
+  echo "- **Date**: $(date +%Y-%m-%d)"
+  echo ""
+  echo "---"
+  echo ""
+  for (( i=0; i<${#chunk_texts[@]}; i++ )); do
+    ts="${chunk_starts[$i]}"
+    end=$((ts + CHUNK_SECS))
+    if [ $end -gt $dur ]; then end=$dur; fi
+    echo "### [$(format_chunk_time "$ts") - $(format_chunk_time "$end")]"
+    echo ""
+    echo "${chunk_texts[$i]}"
+    echo ""
+  done
+} > "$work_dir/transcript.md"
+
+# --- Build metadata.json ---
+chapters="[]"
+if [ -f "$work_dir/video.info.json" ]; then
+  chapters=$(jq '[(.chapters // [])[] | {title: .title, start_secs: (.start_time | floor)}]' \
+    "$work_dir/video.info.json" 2>/dev/null || echo "[]")
+fi
+
+duration_secs=${dur:-0}
+vp="${video_path:-}"
+
+jq -n \
+  --arg title "$title" \
+  --arg source "$source_label" \
+  --argjson duration "$duration_secs" \
+  --arg language "$language" \
+  --argjson chapters "$chapters" \
+  --argjson word_count "$word_count" \
+  --arg video_path "$vp" \
+  '{
+    title: $title,
+    source: $source,
+    duration_secs: $duration,
+    language: $language,
+    chapters: $chapters,
+    word_count: $word_count,
+    video_path: $video_path
+  }' > "$work_dir/metadata.json"
+
+# --- Cleanup ---
+rm -f "$work_dir/audio.wav"
+rm -f "$work_dir/video.info.json"
+
+# --- Output ---
+files_to_send="[]"
+files_to_send=$(echo "$files_to_send" | jq --arg f "$work_dir/transcript.md" '. + [$f]')
+files_to_send=$(echo "$files_to_send" | jq --arg f "$work_dir/metadata.json" '. + [$f]')
+
+if [ -n "$video_path" ]; then
+  summary="Downloaded \"$title\" (${duration_secs}s). Transcribed $word_count words. Video at $video_path — use mofa_frame to extract frames at specific timestamps."
+else
+  summary="Transcribed \"$title\" (${duration_secs}s). $word_count words. Output: $work_dir/"
+fi
+
+jq -n \
+  --arg output "$summary" \
+  --argjson files_to_send "$files_to_send" \
+  '{output: $output, success: true, files_to_send: $files_to_send}'

@@ -1,0 +1,28 @@
+import './globals.css';
+import type { Metadata } from 'next';
+import { SiteHeader } from '../components/SiteHeader';
+import { SiteFooter } from '../components/SiteFooter';
+
+export const metadata: Metadata = {
+  title: {
+    default: '{{site_name}}',
+    template: `%s | {{site_name}}`,
+  },
+  description: '{{site_description}}',
+  openGraph: {
+    title: '{{site_name}}',
+    description: '{{site_description}}',
+  },
+};
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="{{locale}}">
+      <body>
+        <SiteHeader />
+        {children}
+        <SiteFooter />
+      </body>
+    </html>
+  );
+}

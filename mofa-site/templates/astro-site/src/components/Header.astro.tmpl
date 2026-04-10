@@ -1,0 +1,23 @@
+---
+interface Props {
+  siteName: string;
+}
+
+const { siteName } = Astro.props;
+const basePath = '{{base_path}}' === '/' ? '' : '{{base_path}}';
+const links = [
+  { href: `${basePath}/`, label: 'Home' },
+  { href: `${basePath}/about/`, label: 'About' },
+];
+---
+
+<header class="site-header">
+  <div class="shell header-row">
+    <a class="brand" href={`${basePath}/`}>{siteName}</a>
+    <nav class="site-nav">
+      {links.map((link) => (
+        <a href={link.href}>{link.label}</a>
+      ))}
+    </nav>
+  </div>
+</header>

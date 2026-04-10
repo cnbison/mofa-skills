@@ -1,0 +1,44 @@
+// SPDX-License-Identifier: Apache-2.0
+
+// mofa-youtube Architecture Diagram
+// Visual reference — not an executable pipeline
+
+digraph YouTubeArchitecture {
+    graph [label="mofa-youtube Architecture", fontsize=14, fontname="Helvetica", rankdir=LR]
+    node [shape=box, fontname="Helvetica", fontsize=10, style=filled]
+    edge [fontname="Helvetica", fontsize=9]
+
+    // Entry
+    User [label="YouTube URL", shape=ellipse, fillcolor=lightblue]
+
+    // Pipeline stages
+    Download [label="Download\n• yt-dlp\n• metadata JSON", fillcolor=lightyellow]
+    Audio [label="Extract Audio\n• ffmpeg → 16kHz WAV", fillcolor=lightgreen]
+    ASR [label="Transcribe\n• 4-min chunks\n• base64 → ASR API\n• concatenate", fillcolor=lightgreen]
+    Frames [label="Extract Frames\n• ffmpeg key frames\n• 15/38/62/85%\n• sips resize", fillcolor=lightgreen]
+    Summary [label="Summarize\n• LLM analyzes transcript\n• generates metadata.json", fillcolor=lightyellow]
+
+    // External services
+    YTDLP [label="yt-dlp\nYouTube CDN", shape=cylinder, fillcolor=lightcyan]
+    ASRServer [label="ASR Server\nlocalhost:8080\nqwen3-asr", shape=cylinder, fillcolor=lightcyan]
+
+    // Output
+    Output [label="Content Package\n├── transcript.txt\n├── metadata.json\n├── images/\n└── transcript_chapters/", shape=ellipse, fillcolor=lightblue]
+
+    // Downstream
+    Downstream [label="Downstream Skills\n• mofa-site\n• mofa-slides\n• mofa-podcast", shape=ellipse, fillcolor="#E8E8E8"]
+
+    // Flow
+    User -> Download
+    Download -> Audio
+    Download -> Frames
+    Audio -> ASR
+    ASR -> Summary
+    Frames -> Summary [style=dashed]
+    Summary -> Output
+    Output -> Downstream
+
+    // External connections
+    Download -> YTDLP [style=dashed, color=gray]
+    ASR -> ASRServer [style=dashed, color=gray]
+}

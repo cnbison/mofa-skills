@@ -1,0 +1,22 @@
+interface FeatureItem {
+  title: string;
+  body: string;
+}
+
+interface FeatureGridProps {
+  items: FeatureItem[];
+}
+
+export function FeatureGrid({ items }: FeatureGridProps) {
+  return (
+    <section className="feature-grid" id="features">
+      {items.map((item) => (
+        <article className="feature-card" key={item.title}>
+          <p className="eyebrow">Section</p>
+          <h3>{item.title}</h3>
+          <p>{item.body}</p>
+        </article>
+      ))}
+    </section>
+  );
+}

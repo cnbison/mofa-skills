@@ -1,0 +1,46 @@
+import { FeatureGrid } from '../components/FeatureGrid';
+import { Hero } from '../components/Hero';
+
+const features = [
+  {
+    title: 'Static export by default',
+    body: 'This starter follows the ai-vision forum architecture: App Router, static export, and URL-safe trailing slashes.',
+  },
+  {
+    title: 'Section-driven pages',
+    body: 'The scaffold keeps hero, navigation, footer, and feature sections separate so site generation can recombine them.',
+  },
+  {
+    title: 'Theme tokens first',
+    body: 'Colors, spacing, radius, and shell width are exposed as CSS variables so the studio can tune the look without rewriting layout code.',
+  },
+];
+
+export default function HomePage() {
+  return (
+    <main className="page-stack">
+      <section className="hero-band">
+        <div className="shell">
+          <Hero
+            eyebrow="Next.js app"
+            title="{{site_name}}"
+            body="{{site_description}}"
+          />
+        </div>
+      </section>
+
+      <section className="section-band">
+        <div className="shell">
+          <div className="section-copy">
+            <p className="eyebrow">Extracted pattern</p>
+            <h2>Built for event sites, product showcases, and structured landing flows.</h2>
+            <p className="lede">
+              The template mirrors the architecture of a modern App Router site without copying any source-specific branding, copy, or data.
+            </p>
+          </div>
+          <FeatureGrid items={features} />
+        </div>
+      </section>
+    </main>
+  );
+}

@@ -1,0 +1,23 @@
+interface HeroProps {
+  eyebrow: string;
+  title: string;
+  body: string;
+}
+
+export function Hero({ eyebrow, title, body }: HeroProps) {
+  return (
+    <section className="hero">
+      <p className="eyebrow">{eyebrow}</p>
+      <h1>{title}</h1>
+      <p className="lede">{body}</p>
+      <div className="button-row">
+        <a className="button button-primary" href="{{base_path}}/contact">
+          Start the conversation
+        </a>
+        <a className="button button-secondary" href="#features">
+          Inspect the layout system
+        </a>
+      </div>
+    </section>
+  );
+}

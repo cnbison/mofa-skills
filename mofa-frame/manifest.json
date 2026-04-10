@@ -1,0 +1,36 @@
+{
+  "name": "mofa-frame",
+  "version": "0.1.0",
+  "timeout_secs": 60,
+  "tools": [
+    {
+      "name": "mofa_frame",
+      "description": "Extract a single video frame at a specific timestamp. Use after mofa_youtube to capture key moments identified from the transcript.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "video_path": {
+            "type": "string",
+            "description": "Path to the video file (from mofa_youtube metadata.json video_path)"
+          },
+          "timestamp": {
+            "type": "number",
+            "description": "Timestamp in seconds to extract the frame from"
+          },
+          "label": {
+            "type": "string",
+            "description": "Short label for the frame (used in filename)"
+          },
+          "out_path": {
+            "type": "string",
+            "description": "Output path for the PNG (default: auto-generated in frames/ next to video)"
+          }
+        },
+        "required": [
+          "video_path",
+          "timestamp"
+        ]
+      }
+    }
+  ]
+}

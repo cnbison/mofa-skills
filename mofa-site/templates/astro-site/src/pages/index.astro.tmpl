@@ -1,0 +1,29 @@
+---
+import Layout from 'layouts/Layout.astro';
+import Hero from 'components/Hero.astro';
+import FeatureGrid from 'components/FeatureGrid.astro';
+
+const features = [
+  {
+    title: 'Data-driven sections',
+    body: 'Content blocks can be fed from JSON, markdown, or an upstream generation plan.',
+  },
+  {
+    title: 'Section-first composition',
+    body: 'The page is assembled from reusable hero, feature, CTA, and footer primitives.',
+  },
+  {
+    title: 'Static-first delivery',
+    body: 'Astro renders a fast site while still leaving room for React islands when needed.',
+  },
+];
+---
+
+<Layout title="{{site_name}}" description="{{site_description}}">
+  <Hero
+    eyebrow="Astro site"
+    title="{{site_name}}"
+    body="{{site_description}}"
+  />
+  <FeatureGrid items={features} />
+</Layout>

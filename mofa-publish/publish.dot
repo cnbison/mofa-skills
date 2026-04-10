@@ -1,0 +1,47 @@
+// SPDX-License-Identifier: Apache-2.0
+
+// Site Publishing Pipeline
+// 4-step: detect → prepare → deploy → verify
+//
+// Takes a built static site directory and deploys it to
+// GitHub Pages or Mac Mini local hosting.
+//
+// Tool contract:
+//   shell      — runs gh, git, scp, curl, ssh commands
+//   read_file  — reads site files for validation
+//   write_file — writes .nojekyll, CNAME, GitHub Actions workflow
+
+digraph publish {
+    graph [label="Site Publishing Pipeline", default_model="cheap"]
+
+    detect [
+        prompt="You are a deployment specialist. Your first job is to detect and validate the site to deploy.\n\nStep 1: Check the site directory exists and contains index.html.\nUse shell:\nls -la <site_dir>/\ntest -f <site_dir>/index.html && echo 'OK: index.html found' || echo 'ERROR: no index.html'\n\nStep 2: Count total files and get directory size.\nUse shell:\nfind <site_dir> -type f | wc -l\ndu -sh <site_dir>\n\nStep 3: Detect the site framework (informational only).\n- If parent dir has _quarto.yml → Quarto site\n- If parent dir has astro.config.mjs → Astro site\n- If parent dir has next.config.js → Next.js site\n- Otherwise → plain HTML\n\nReport:\n- Site directory path\n- Total files\n- Directory size\n- Detected framework\n- Whether index.html exists\n\nIf index.html is missing, report the error and stop.",
+        label="Detect",
+        tools="shell,read_file",
+        timeout_secs="30"
+    ]
+
+    prepare [
+        prompt="You are a deployment specialist. Prepare the target for deployment.\n\n## If target is 'github-pages':\n\nStep 1: Check if the repo exists.\nUse shell: gh repo view <repo> --json name 2>&1\n\nStep 2: If repo doesn't exist, create it.\nUse shell: gh repo create <repo> --public --confirm\n\nStep 3: Initialize git in the site directory.\nUse shell:\ncd <site_dir>\ngit init\ngit checkout -B gh-pages\n\nStep 4: Add .nojekyll to prevent Jekyll processing.\nUse write_file to create <site_dir>/.nojekyll (empty file).\n\nStep 5: If cname is provided, write the CNAME file.\nUse write_file to create <site_dir>/CNAME with the domain.\n\nStep 6: If setup_ci is true, publish the GitHub Actions workflow into the remote repo using `gh api repos/<repo>/contents/.github/workflows/deploy.yml`.\nIf repo_root is provided, also write the same workflow to <repo_root>/.github/workflows/deploy.yml.\n\n## If target is 'mini':\n\nStep 1: Determine host details.\n- mini1: IP=69.194.3.128, domain=crew.ominix.io\n- mini3: IP=69.194.3.203, domain=octos.ominix.io\n- SSH user defaults to `cloud`, but may be overridden by `mini_user`\n- Remote root defaults to `/Users/<mini_user>/octos-web`, but may be overridden by `remote_root`\n\nStep 2: Build SSH options.\n- Always include `-o StrictHostKeyChecking=no -o ConnectTimeout=5`\n- If `ssh_key` is provided, also include `-i <ssh_key> -o IdentitiesOnly=yes -o IdentityAgent=none -o PreferredAuthentications=publickey -o PubkeyAuthentication=yes`\n\nStep 3: Test SSH connectivity.\nUse shell: ssh <ssh_opts> -p <ssh_port> <mini_user>@<ip> 'echo ok' 2>&1\n\nStep 4: Create target directory on remote.\nUse shell: ssh <ssh_opts> -p <ssh_port> <mini_user>@<ip> 'mkdir -p <remote_root>/sites/<slug>'\n\nReport what was prepared and confirm ready for deploy.",
+        label="Prepare",
+        tools="shell,write_file,read_file",
+        timeout_secs="60"
+    ]
+
+    deploy [
+        prompt="You are a deployment specialist. Execute the deployment.\n\n## If target is 'github-pages':\n\nStep 1: Stage and commit all files.\nUse shell:\ncd <site_dir>\ngit add -A\ngit -c user.name='mofa-publish' -c user.email='mofa-publish@local' commit -m 'Deploy <slug>'\n\nStep 2: Add remote and push.\nUse shell:\ncd <site_dir>\ngit remote add origin https://github.com/<repo>.git 2>/dev/null || git remote set-url origin https://github.com/<repo>.git\ngit push -f origin gh-pages\n\nStep 3: Enable GitHub Pages on the gh-pages branch.\nUse shell:\ngh api repos/<repo>/pages -X POST -f source.branch=gh-pages -f source.path=/ 2>&1 || echo 'Pages may already be configured'\n\nThe site will usually be available at: https://<owner>.github.io/<repo-name>/\nIf cname is provided, the final URL should be reported as https://<cname>/\n\n## If target is 'mini':\n\nStep 1: Copy all files to the remote.\nUse shell:\nscp <ssh_opts> -P <ssh_port> -r <site_dir>/. <mini_user>@<ip>:<remote_root>/sites/<slug>/\n\nThe site will be available at: https://<domain>/sites/<slug>/\n\nReport the deployment target URL.",
+        label="Deploy",
+        tools="shell",
+        timeout_secs="120"
+    ]
+
+    verify [
+        prompt="You are a deployment specialist. Verify the deployment is live.\n\nStep 1: Wait briefly for propagation.\nGitHub Pages can take 30-60 seconds to go live.\nUse shell: sleep 10\n\nStep 2: Curl the deployed URL.\n\nFor github-pages:\n- If cname is provided: curl https://<cname>/\n- Otherwise: curl https://<owner>.github.io/<repo-name>/\n\nFor mini:\nUse shell: curl -s -o /dev/null -w '%{http_code}' https://<domain>/sites/<slug>/\n\nStep 3: If HTTP 200, report success with the live URL.\nIf not 200, wait another 15 seconds and try again (GitHub Pages can be slow).\nAfter 3 attempts, report the status and suggest checking manually.\n\nFinal report:\n- Deployment target: github-pages or mini\n- Live URL: <url>\n- HTTP status: <code>\n- Total files deployed: <count>\n- Site size: <size>",
+        label="Verify",
+        tools="shell",
+        goal_gate="true",
+        timeout_secs="120"
+    ]
+
+    detect -> prepare -> deploy -> verify
+}

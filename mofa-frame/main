@@ -1,0 +1,68 @@
+#!/bin/bash
+# mofa-frame: Extract a video frame at a specific timestamp.
+# Protocol: argv[1]=tool_name, stdin=JSON args, stdout=JSON result.
+set -euo pipefail
+
+TOOL_NAME="${1:-mofa_frame}"
+ARGS=$(cat)
+
+video_path=$(echo "$ARGS" | jq -r '.video_path // empty')
+timestamp=$(echo "$ARGS" | jq -r '.timestamp // empty')
+out_path=$(echo "$ARGS" | jq -r '.out_path // empty')
+label=$(echo "$ARGS" | jq -r '.label // empty')
+
+if [ -z "$video_path" ]; then
+  echo '{"output":"Error: video_path is required","success":false}'
+  exit 0
+fi
+
+if [ ! -f "$video_path" ]; then
+  echo "{\"output\":\"Error: video not found: $video_path\",\"success\":false}"
+  exit 0
+fi
+
+if [ -z "$timestamp" ]; then
+  echo '{"output":"Error: timestamp is required (seconds)","success":false}'
+  exit 0
+fi
+
+# Default output path
+if [ -z "$out_path" ]; then
+  dir=$(dirname "$video_path")
+  mkdir -p "$dir/frames"
+  ts_label=$(echo "$timestamp" | tr '.' '-')
+  if [ -n "$label" ]; then
+    safe_label=$(echo "$label" | tr ' /:' '_' | tr -cd 'a-zA-Z0-9_-' | head -c 40)
+    out_path="$dir/frames/frame-${ts_label}s-${safe_label}.png"
+  else
+    out_path="$dir/frames/frame-${ts_label}s.png"
+  fi
+fi
+
+mkdir -p "$(dirname "$out_path")"
+
+# Resolve to absolute path
+out_dir="$(cd "$(dirname "$out_path")" && pwd)"
+out_path="$out_dir/$(basename "$out_path")"
+
+# Extract frame
+ffmpeg -y -ss "$timestamp" -i "$video_path" \
+  -frames:v 1 -q:v 2 \
+  "$out_path" 2>/dev/null || {
+  echo '{"output":"Error: ffmpeg frame extraction failed","success":false}'
+  exit 0
+}
+
+# Resize to 800px wide
+if command -v sips >/dev/null 2>&1; then
+  sips --resampleWidth 800 "$out_path" >/dev/null 2>&1 || true
+else
+  ffmpeg -y -i "$out_path" -vf 'scale=800:-1' "${out_path}.tmp.png" 2>/dev/null && mv "${out_path}.tmp.png" "$out_path"
+fi
+
+jq -n \
+  --arg output "Extracted frame at ${timestamp}s → $out_path" \
+  --arg file "$out_path" \
+  --arg timestamp "$timestamp" \
+  --arg label "$label" \
+  '{output: $output, success: true, files_to_send: [$file], timestamp: $timestamp, label: $label}'

@@ -1,0 +1,54 @@
+// SPDX-License-Identifier: Apache-2.0
+
+// Website Builder Pipeline (Phase 1 template: quarto-lesson)
+// 5-step: plan → expand → visualize → assemble → build
+//
+// Takes content (transcript, images, metadata) from mofa-youtube or manual input
+// and generates a complete Quarto lesson site with interactive math visualizations.
+//
+// Tool contract:
+//   shell      — runs quarto render, file operations
+//   read_file  — reads transcript, metadata, generated files
+//   write_file — writes .qmd pages, _quarto.yml, styles.css, site_plan.json
+
+digraph build_site {
+    graph [label="Website Builder Pipeline", default_model="strong"]
+
+    plan [
+        prompt="You are a curriculum designer and site architect. You have received a content directory with a transcript (and optionally metadata.json, images/, chapter splits).\n\nYour job is to plan the complete Quarto lesson site structure for the Phase 1 `quarto-lesson` template.\n\nStep 1: Read available content.\n- Use read_file to read <content_dir>/metadata.json (if exists)\n- Use read_file to read <content_dir>/transcript.txt\n- Use shell to run: ls <content_dir>/images/ 2>/dev/null\n- Use shell to run: ls <content_dir>/transcript_chapters/ 2>/dev/null\n\nStep 2: Analyze the content and plan the site.\nConsider:\n- How many pages? If transcript_chapters/ exists, one page per chapter. Otherwise, split by topic.\n- What interactive components fit this content? (Desmos graphs for math, D3 visualizations for data)\n- What is the natural navigation structure?\n- Is this bilingual? (check language field in metadata.json)\n\nStep 3: Write <out_dir>/site_plan.json with this schema:\n{\n  \"title\": \"<site title>\",\n  \"language\": \"en|zh|bilingual\",\n  \"template\": \"quarto-lesson\",\n  \"pages\": [\n    {\n      \"slug\": \"ch01-topic-name\",\n      \"title\": \"Page Title\",\n      \"subtitle\": \"Chapter 1\",\n      \"source_file\": \"transcript_chapters/ch01.txt or null\",\n      \"topics\": [\"topic1\", \"topic2\"],\n      \"interactive_components\": [\n        {\"type\": \"desmos\", \"description\": \"Graph of f(x) with tangent line slider\"},\n        {\"type\": \"d3\", \"description\": \"Riemann sum visualization with n slider\"}\n      ],\n      \"images\": [\"images/frame-01.png\"],\n      \"video_url\": \"https://youtube.com/embed/...\" \n    }\n  ],\n  \"navbar\": [{\"text\": \"Home\", \"href\": \"index.qmd\"}, {\"text\": \"Lessons\", \"href\": \"lessons.qmd\"}]\n}\n\nBe specific about interactive components — describe exactly what each Desmos graph or D3 visualization should show.",
+        label="Plan",
+        tools="read_file,write_file,shell",
+        timeout_secs="120"
+    ]
+
+    expand [
+        prompt="You are an expert educator and technical writer. You have a site plan (site_plan.json) and raw transcript content.\n\nYour job is to write polished lesson page content for each page in the plan.\n\nStep 1: Read the site plan.\nUse read_file to read <out_dir>/site_plan.json.\n\nStep 2: For each page in the plan, read its source transcript.\nUse read_file to read the source_file if specified, or the full transcript.txt.\n\nStep 3: For EACH page, write a .qmd file to <out_dir>/lessons/<slug>.qmd.\n\nEach .qmd file must follow this structure:\n\n```\n---\ntitle: \"<title>\"\nsubtitle: \"<subtitle>\"\ndate: <today's date>\n---\n\n<Introduction paragraph — 2-3 sentences explaining what this lesson covers and why it matters>\n\n::: {.callout-note collapse=\"true\"}\n## Prerequisites\n\n- <prerequisite 1>\n- <prerequisite 2>\n:::\n\n## Topics Covered\n\n- <topic 1>\n- <topic 2>\n\n## Lecture Video\n\n` ` `{=html}\n<div class=\"video-container\">\n  <iframe src=\"<youtube_embed_url>\" title=\"<title>\" frameborder=\"0\" allow=\"accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share\" allowfullscreen></iframe>\n</div>\n` ` `\n\n## Key Video Frames\n\n![<description>](../<image_path>)\n\n## Key Concepts\n\n### <Concept 1 Title>\n\n<Formal exposition with LaTeX math. Use $inline$ and $$display$$ math.>\n\n### <Concept 2 Title>\n\n<Continue with all major concepts from the transcript.>\n```\n\nIMPORTANT RULES:\n- Transform casual lecture transcript into formal, precise mathematical writing\n- Use LaTeX for ALL math: variables ($x$), equations ($$\\int_0^R f(x)\\,dx$$), etc.\n- Write complete sentences with proper mathematical reasoning\n- Do NOT include Desmos or D3 code — that's the next step\n- Add placeholder comments where interactive components should go: <!-- DESMOS: description --> and <!-- D3: description -->\n- If bilingual, write both EN and ZH versions of each page\n\nWrite one file at a time using write_file. Report progress after each page.",
+        label="Expand",
+        tools="read_file,write_file",
+        timeout_secs="600"
+    ]
+
+    visualize [
+        prompt="You are an interactive visualization specialist. You create Desmos graphs and D3.js visualizations for educational math/science content.\n\nYour job is to replace the <!-- DESMOS: ... --> and <!-- D3: ... --> placeholder comments in the lesson .qmd files with actual working interactive code.\n\nStep 1: Read the site plan for component descriptions.\nUse read_file to read <out_dir>/site_plan.json.\n\nStep 2: Read each lesson .qmd file.\nUse read_file to read each file in <out_dir>/lessons/.\n\nStep 3: For each placeholder, generate the appropriate interactive component and rewrite the file.\n\n### Desmos Graph Pattern\n\nReplace <!-- DESMOS: description --> with:\n\n```{=html}\n<div id=\"calc-<unique-id>\" class=\"desmos-container\"></div>\n<script src=\"https://www.desmos.com/api/v1.9/calculator.js?apiKey=dcb31709b452b1cf9dc26972add0fda6\"></script>\n<script>\n  var calc_<id> = Desmos.GraphingCalculator(document.getElementById('calc-<unique-id>'), {\n    expressions: true, settingsMenu: false, xAxisLabel: '<label>', yAxisLabel: '<label>'\n  });\n  calc_<id>.setExpression({ id: '<id>', latex: '<latex expression>', color: '#2d70b3' });\n  calc_<id>.setExpression({ id: 'slider', latex: '<var> = <default>', sliderBounds: { min: <min>, max: <max>, step: <step> } });\n  calc_<id>.setMathBounds({ left: <xmin>, right: <xmax>, bottom: <ymin>, top: <ymax> });\n</script>\n```\n\n### D3.js Visualization Pattern\n\nReplace <!-- D3: description --> with:\n\n```{=html}\n<div class=\"d3-container\">\n  <div id=\"<unique-id>\"></div>\n  <div class=\"d3-controls\">\n    <label><Name>: <input type=\"range\" id=\"<slider-id>\" min=\"<min>\" max=\"<max>\" value=\"<default>\"></label>\n    <span class=\"value-display\" id=\"<display-id>\"><label> = <default></span>\n  </div>\n</div>\n<script>\n(function() {\n  const width = 600, height = 400;\n  const margin = {top: 20, right: 30, bottom: 40, left: 50};\n  const svg = d3.select('#<unique-id>').append('svg')\n    .attr('viewBox', `0 0 ${width} ${height}`);\n  // ... visualization code using D3 v7 ...\n  // Hook up slider\n  d3.select('#<slider-id>').on('input', function() {\n    // update visualization\n  });\n})();\n</script>\n```\n\nIMPORTANT:\n- Each Desmos/D3 block must use UNIQUE element IDs (no collisions across pages)\n- Desmos: use proper LaTeX escaping (double backslash in JS strings)\n- D3: wrap in IIFE to avoid global scope pollution\n- D3: use viewBox for responsive sizing\n- Make the visualizations actually illustrate the mathematical concept being discussed\n- Sliders should have sensible ranges for the math being shown\n\nRewrite each file with write_file after inserting all components.",
+        label="Visualize",
+        tools="read_file,write_file",
+        timeout_secs="600"
+    ]
+
+    assemble [
+        prompt="You are a site builder. The lesson pages are written and have interactive components. Now you need to generate all the site infrastructure files.\n\nStep 1: Read the site plan.\nUse read_file to read <out_dir>/site_plan.json.\n\nStep 2: Generate _quarto.yml.\nUse write_file to create <out_dir>/_quarto.yml:\n\nproject:\n  type: website\n  output-dir: docs\n\nwebsite:\n  title: \"<title from plan>\"\n  navbar:\n    left:\n      <navbar items from plan>\n\nformat:\n  html:\n    theme: <theme>\n    css: styles.css\n    toc: true\n    include-in-header:\n      text: |\n        <script src=\"https://d3js.org/d3.v7.min.js\"></script>\n\nStep 3: Generate styles.css.\nUse write_file to create <out_dir>/styles.css with these classes:\n- Google Manrope font import\n- .video-container (16:9 responsive)\n- .desmos-container (500px height, rounded border)\n- .d3-container (rounded border, light background)\n- .d3-controls (flex row with slider styling)\n- .key-formula (blue left-border box)\n\nStep 4: Generate index.qmd (landing page).\nCreate a welcoming home page with:\n- Site title and description\n- Overview of what the site covers\n- Links to all lesson pages\n- Any hero image from the images directory\n\nStep 5: Generate lessons.qmd (auto-listing page).\n```yaml\n---\ntitle: \"Lessons\"\nlisting:\n  contents: lessons\n  sort: \"date\"\n  type: default\n---\n```\n\nStep 6: Copy image FILES from content_dir into <out_dir>/images without nesting another images/ directory.\nUse shell:\nmkdir -p <out_dir>/images\ncp -R <content_dir>/images/. <out_dir>/images/ 2>/dev/null || true\n\nGenerated lesson pages should reference copied assets as ../images/<filename>.\n\nStep 7: If bilingual, generate index-zh.qmd and lessons-zh/ equivalents.\n\nReport the complete file listing when done.",
+        label="Assemble",
+        tools="read_file,write_file,shell",
+        timeout_secs="300"
+    ]
+
+    build [
+        prompt="You are a build engineer. All site source files are ready. Your job is to build the static site and validate the output.\n\nStep 1: List all source files.\nUse shell: find <out_dir> -type f -not -path '*/docs/*' | sort\n\nStep 2: Run the build.\nFor the implemented Phase 1 template (`quarto-lesson`):\nUse shell: cd <out_dir> && quarto render 2>&1\n\nStep 3: Validate the build output.\nUse shell: ls -la <out_dir>/docs/\nCheck that index.html exists and all lesson pages were generated.\n\nStep 4: Report build status.\n- Total files generated\n- Output directory size\n- List of HTML pages\n- Any warnings or errors from the build\n\nIf the build fails, read the error output, diagnose the issue, fix the source file, and rebuild. Common issues:\n- Missing closing tags in HTML blocks\n- Invalid YAML frontmatter\n- Bad Desmos/D3 JavaScript syntax\n\nThe `docs/` directory is what mofa-publish will deploy.",
+        label="Build",
+        tools="shell,read_file,write_file",
+        goal_gate="true",
+        timeout_secs="300"
+    ]
+
+    plan -> expand -> visualize -> assemble -> build
+}

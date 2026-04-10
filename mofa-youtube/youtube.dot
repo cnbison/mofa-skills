@@ -1,0 +1,69 @@
+// SPDX-License-Identifier: Apache-2.0
+
+// YouTube Content Extraction Pipeline
+// 6-step: download → extract_audio → transcribe → extract_frames → summarize → deliver
+//
+// Takes a YouTube URL and produces a structured content package:
+//   transcript.txt, metadata.json, images/ (key frames)
+// Then delivers results back to the chat (transcript + frames + summary).
+//
+// Zero Python — all shell + curl + ffmpeg + yt-dlp.
+//
+// Tool contract:
+//   shell      — runs yt-dlp, ffmpeg, ffprobe, curl, jq, base64
+//   read_file  — reads downloaded metadata and transcript files
+//   write_file — writes metadata.json and chapter splits
+//   message    — sends text messages back to the user in chat
+//   send_file  — sends files (images, transcript) back to the user in chat
+
+digraph youtube {
+    graph [label="YouTube Content Extraction Pipeline", default_model="cheap"]
+
+    download [
+        prompt="You are a video download specialist. The user has provided a YouTube URL.\n\nYour job is to download the video and extract its metadata using yt-dlp.\n\nStep 1: Create the work directory.\nUse shell to run:\nmkdir -p <work_dir>\n\nStep 2: Download the video with metadata.\nUse shell to run:\nyt-dlp -f 'bestvideo[height<=1080]+bestaudio/best[height<=1080]' \\\n  --merge-output-format mp4 \\\n  --write-info-json \\\n  --no-playlist \\\n  -o '<work_dir>/video.mp4' \\\n  '<url>'\n\nStep 3: Read the info JSON to extract metadata.\nyt-dlp writes a .info.json file next to the video. Use read_file to read <work_dir>/video.info.json.\n\nExtract and report:\n- Title\n- Duration (seconds)\n- Description (first 500 chars)\n- Chapters (if available — array of {title, start_time, end_time})\n- Upload date\n- Channel name\n\nIf the video has chapters, list them all with timestamps.",
+        label="Download",
+        tools="shell,read_file",
+        timeout_secs="300"
+    ]
+
+    extract_audio [
+        prompt="You are an audio extraction specialist. A video file exists at <work_dir>/video.mp4.\n\nYour job is to extract the audio track as a 16kHz mono WAV file for ASR processing.\n\nUse shell to run:\nffmpeg -y -i <work_dir>/video.mp4 \\\n  -vn -acodec pcm_s16le -ar 16000 -ac 1 \\\n  <work_dir>/audio.wav 2>&1 | tail -5\n\nThen verify the file was created:\nls -lh <work_dir>/audio.wav\n\nReport the audio file size and confirm it was created successfully.",
+        label="Extract Audio",
+        tools="shell",
+        timeout_secs="120"
+    ]
+
+    transcribe [
+        prompt="You are a transcription specialist. An audio file exists at <work_dir>/audio.wav. Your job is to transcribe it using the local ASR endpoint.\n\nThe ASR API:\n- Endpoint: http://localhost:8080/v1/audio/transcriptions\n- Model: qwen3-asr\n- Request format: JSON with {file: <base64>, model: 'qwen3-asr', language: '<lang>'}\n- Audio must be chunked into 4-minute (240-second) segments\n\nStep 1: Get the audio duration.\nUse shell:\ndur=$(ffprobe -v quiet -show_entries format=duration -of csv=p=0 <work_dir>/audio.wav | cut -d. -f1)\necho \"Duration: ${dur}s\"\n\nStep 2: Transcribe each chunk.\nFor each 240-second chunk, run these shell commands:\n\nIMPORTANT: The base64-encoded audio is too large for shell arguments (~10MB per chunk).\nYou MUST use file-based curl with -d @file, never inline the base64 string.\n\nffmpeg -y -i <work_dir>/audio.wav -ss <start> -t 240 \\\n  -acodec pcm_s16le -ar 16000 -ac 1 /tmp/asr_chunk.wav 2>/dev/null\nbase64 < /tmp/asr_chunk.wav | tr -d '\\n' > /tmp/asr_chunk.b64\n# Build JSON by concatenating around the base64 file (avoids shell arg limits)\n{ printf '{\"file\":\"'; cat /tmp/asr_chunk.b64; printf '\",\"model\":\"qwen3-asr\",\"language\":\"<lang>\"}'; } > /tmp/asr_req.json\ncurl -s -X POST http://localhost:8080/v1/audio/transcriptions \\\n  -H 'Content-Type: application/json' --max-time 300 \\\n  -d @/tmp/asr_req.json | jq -r '.text'\n\nProcess chunks sequentially: 0-240, 240-480, 480-720, etc.\nAppend each chunk's text to <work_dir>/transcript.txt using write_file.\n\nStep 3: If the video has chapters (from the download step), also split the transcript into per-chapter files.\nCreate <work_dir>/transcript_chapters/ directory and write ch01.txt, ch02.txt, etc. based on chapter timestamps.\n\nReport the total word count and number of chunks processed.",
+        label="Transcribe",
+        tools="shell,write_file,read_file",
+        timeout_secs="900"
+    ]
+
+    extract_frames [
+        prompt="You are a video frame extraction specialist. A video file exists at <work_dir>/video.mp4.\n\nYour job is to extract key frames using SMART selection — not random timestamps.\n\nStep 1: Create the images directory.\nUse shell: mkdir -p <work_dir>/images\n\nStep 2: Check if chapter timestamps are available.\nThe download step may have reported chapters from yt-dlp metadata. If <work_dir>/video.info.json exists, read it to check for chapters.\n\nStrategy A — Chapter-based (preferred, if chapters exist):\nExtract one frame 5 seconds after each chapter start. This captures the key visual for each section.\n\nFor each chapter with start_time T:\nffmpeg -y -ss $(( T + 5 )) -i <work_dir>/video.mp4 \\\n  -frames:v 1 -q:v 2 \\\n  <work_dir>/images/frame-<NN>.png 2>/dev/null\n\nThe 5-second offset avoids transition frames at the exact chapter boundary.\n\nStrategy B — Scene change detection (fallback, if no chapters):\nUse ffmpeg scene detection to find frames where the visual changes significantly.\n\nStart with threshold 0.15 (good for animated/lecture videos):\nffmpeg -i <work_dir>/video.mp4 \\\n  -vf \"select='gt(scene,0.15)',showinfo\" \\\n  -vsync vfr \\\n  <work_dir>/images/frame-%02d.png 2>&1 | grep showinfo\n\nThis picks frames at natural visual transitions (slide changes, diagram switches).\n\nIf scene detection produces too many frames (>20), increase the threshold to 0.3 or 0.4.\nIf it produces too few (<3), decrease to 0.1.\n\nStep 3: Resize all extracted frames to 800px wide.\nOn macOS:\nsips --resampleWidth 800 <work_dir>/images/frame-*.png 2>/dev/null\n\nOr with ffmpeg:\nfor f in <work_dir>/images/frame-*.png; do\n  ffmpeg -y -i \"$f\" -vf 'scale=800:-1' \"${f}.tmp.png\" 2>/dev/null && mv \"${f}.tmp.png\" \"$f\"\ndone\n\nStep 4: If keep_video is false, delete the video to save space:\nrm <work_dir>/video.mp4\n\nReport:\n- Which strategy was used (chapters or scene detection)\n- Number of frames extracted\n- Timestamp of each frame",
+        label="Extract Frames",
+        tools="shell,read_file",
+        timeout_secs="120"
+    ]
+
+    summarize [
+        prompt="You are a content analyst. You have a transcript and extracted frames from a YouTube video.\n\nYour job is to generate a structured metadata.json file for downstream skills.\n\nStep 1: Read the transcript.\nUse read_file to read <work_dir>/transcript.txt.\n\nStep 2: If a yt-dlp info JSON exists, read it too for title, chapters, etc.\nUse read_file to read <work_dir>/video.info.json (may not exist if video was deleted).\n\nStep 3: Analyze the content and generate metadata.json.\nUse write_file to write <work_dir>/metadata.json with this schema:\n\n{\n  \"title\": \"<video title>\",\n  \"url\": \"<youtube URL>\",\n  \"duration_secs\": <integer>,\n  \"language\": \"<detected language: en, zh, etc.>\",\n  \"topics\": [\"<topic1>\", \"<topic2>\", ...],\n  \"chapters\": [\n    {\"title\": \"<chapter title>\", \"start_secs\": <integer>},\n    ...\n  ],\n  \"key_concepts\": [\"<concept1>\", \"<concept2>\", ...],\n  \"frame_timestamps\": [<t1>, <t2>, <t3>, <t4>],\n  \"summary\": \"<2-3 sentence summary of the content>\"\n}\n\n- topics: 3-8 main topics discussed\n- key_concepts: 5-15 specific technical terms, formulas, or ideas\n- chapters: from yt-dlp metadata if available, else infer 3-5 natural sections from the transcript\n- summary: concise description useful for a downstream site builder\n\nStep 4: Clean up — delete video.info.json (large, no longer needed).\nUse shell: rm -f <work_dir>/video.info.json\n\nReport the final metadata.json content.",
+        label="Summarize",
+        tools="read_file,write_file,shell",
+        timeout_secs="120"
+    ]
+
+    deliver [
+        prompt="You are a content delivery specialist. The pipeline has produced a content package. Your job is to send the results back to the user in chat so they can see everything.\n\nStep 1: Send a summary message.\nUse read_file to read <work_dir>/metadata.json.\nThen use message to send a formatted summary:\n\n📹 **<title>**\n⏱ Duration: <duration>\n🌐 Language: <language>\n\n**Topics:** <topics list>\n**Key Concepts:** <key concepts list>\n\n**Summary:** <summary text>\n\n📄 Transcript: <word count> words\n🖼 Frames: <frame count> key frames extracted\n📁 Files saved to: <work_dir>/\n\nStep 2: Send the transcript file.\nUse send_file to send <work_dir>/transcript.txt\n\nStep 3: Send each extracted frame image.\nUse shell to list the images: ls <work_dir>/images/*.png 2>/dev/null\nThen use send_file to send each frame image file.\n\nStep 4: Send metadata.json.\nUse send_file to send <work_dir>/metadata.json\n\nSend files one at a time. Report when all files have been delivered.",
+        label="Deliver",
+        tools="message,send_file,read_file,shell",
+        timeout_secs="120"
+    ]
+
+    download -> extract_audio -> transcribe
+    download -> extract_frames
+    transcribe -> summarize
+    extract_frames -> deliver
+    summarize -> deliver
+}

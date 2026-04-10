@@ -1,0 +1,34 @@
+import { Header } from './components/Header';
+import { Hero } from './components/Hero';
+import { FeatureGrid } from './components/FeatureGrid';
+
+const features = [
+  {
+    title: 'Fast prototype loop',
+    body: 'React + Vite is the lightweight option when you want a tuning surface without full framework overhead.',
+  },
+  {
+    title: 'Clean component boundaries',
+    body: 'The scaffold keeps layout, hero, cards, and CTA logic separate for easier regeneration.',
+  },
+  {
+    title: 'Style token editing',
+    body: 'Color, spacing, radius, and typography are exposed through CSS variables.',
+  },
+];
+
+export default function App() {
+  return (
+    <>
+      <Header />
+      <main className="shell page-stack">
+        <Hero
+          eyebrow="React + Vite"
+          title="{{site_name}}"
+          body="{{site_description}}"
+        />
+        <FeatureGrid items={features} />
+      </main>
+    </>
+  );
+}

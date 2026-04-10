@@ -1,0 +1,16 @@
+export function SiteHeader() {
+  return (
+    <header className="site-header">
+      <div className="shell header-row">
+        <a className="brand" href="{{base_path}}/">
+          {{site_name}}
+        </a>
+        <nav className="nav">
+          <a href="{{base_path}}/">Home</a>
+          <a href="{{base_path}}/contact">Contact</a>
+          <a href="{{base_path}}/privacy">Privacy</a>
+        </nav>
+      </div>
+    </header>
+  );
+}

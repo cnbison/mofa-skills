@@ -1,0 +1,12 @@
+export function FeatureGrid({ items }) {
+  return (
+    <section className="feature-grid" id="features">
+      {items.map((item) => (
+        <article className="feature-card" key={item.title}>
+          <h3>{item.title}</h3>
+          <p>{item.body}</p>
+        </article>
+      ))}
+    </section>
+  );
+}

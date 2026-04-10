@@ -1,0 +1,17 @@
+export function Hero({ eyebrow, title, body }) {
+  return (
+    <section className="hero">
+      <p className="eyebrow">{eyebrow}</p>
+      <h1>{title}</h1>
+      <p className="lede">{body}</p>
+      <div className="button-row" id="cta">
+        <a className="button button-primary" href="#features">
+          Start with sections
+        </a>
+        <button className="button button-secondary" type="button">
+          Replace with your own CTA
+        </button>
+      </div>
+    </section>
+  );
+}

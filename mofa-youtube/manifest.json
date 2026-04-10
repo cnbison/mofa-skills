@@ -1,0 +1,34 @@
+{
+  "name": "mofa-youtube",
+  "version": "0.1.0",
+  "timeout_secs": 1800,
+  "tools": [
+    {
+      "name": "mofa_youtube",
+      "description": "Download a YouTube video OR accept a local audio file, then transcribe via local ASR. Returns markdown transcript with timestamps. For YouTube videos, keeps the video file for frame extraction via mofa_frame.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "YouTube video URL (provide this OR audio_path)"
+          },
+          "audio_path": {
+            "type": "string",
+            "description": "Path to a local audio file — MP3, WAV, M4A, etc. (provide this OR url)"
+          },
+          "work_dir": {
+            "type": "string",
+            "description": "Output directory (default: skill-output/mofa-youtube-<timestamp>)"
+          },
+          "language": {
+            "type": "string",
+            "default": "auto",
+            "description": "ASR language hint: auto, en, zh, ja, etc."
+          }
+        },
+        "required": []
+      }
+    }
+  ]
+}
