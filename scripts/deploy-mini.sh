@@ -1,9 +1,10 @@
 #!/bin/bash
-# Deploy all mofa skills to a Mac Mini's dspfac profile.
-# Usage: ./scripts/deploy-mini.sh [mini1|mini3]
+# Deploy all mofa skills to a Mac Mini profile/sub-account.
+# Usage: ./scripts/deploy-mini.sh [mini1|mini3] [profile]
 set -euo pipefail
 
 MINI="${1:-mini1}"
+PROFILE="${2:-dspfac}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="${SCRIPT_DIR%/scripts}"
 
@@ -17,16 +18,16 @@ case "$MINI" in
     PW="b_KPfpN7Ge2ggxF-"
     ;;
   *)
-    echo "Usage: $0 [mini1|mini3]" >&2
+    echo "Usage: $0 [mini1|mini3] [profile]" >&2
     exit 1
     ;;
 esac
 
 SSH="sshpass -p '$PW' ssh -o StrictHostKeyChecking=no cloud@$IP"
 SCP="sshpass -p '$PW' scp -o StrictHostKeyChecking=no"
-REMOTE_SKILLS="/Users/cloud/.octos/profiles/dspfac/data/skills"
+REMOTE_SKILLS="/Users/cloud/.octos/profiles/$PROFILE/data/skills"
 
-echo "=== Deploying mofa-skills to $MINI ($IP) ==="
+echo "=== Deploying mofa-skills to $MINI ($IP) profile=$PROFILE ==="
 echo ""
 
 # Skills to deploy — each dir under mofa-skills/ that has a SKILL.md

@@ -211,6 +211,15 @@ The [octos-hub](https://github.com/octos-org/octos-hub) is automatically synced 
 
 Add a `OCTOS_HUB_TOKEN` secret to this repo — a GitHub PAT with `repo` scope for `octos-org/octos-hub`.
 
+### Mini profile deploy
+
+Deploy skills to a specific Mini profile or sub-account:
+
+```bash
+./scripts/deploy-mini.sh mini1 dspfac
+./scripts/deploy-mini.sh mini1 dspfac--newsbot
+```
+
 ## License
 
 [Apache License 2.0](LICENSE)

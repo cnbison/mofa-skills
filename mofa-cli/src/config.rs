@@ -148,29 +148,74 @@ impl MofaConfig {
 
 /// Find the mofa root directory by walking up from the binary or CWD.
 pub fn find_mofa_root() -> PathBuf {
-    // Try CWD first
     let cwd = std::env::current_dir().unwrap_or_default();
-    if cwd.join("mofa").join("config.json").exists() {
-        return cwd;
-    }
-    // Try relative to binary
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(parent) = exe.parent().and_then(|p| p.parent()) {
-            if parent.join("mofa").join("config.json").exists() {
-                return parent.to_path_buf();
-            }
-        }
-    }
-    // Fallback: ~/.octos/skills/mofa parent
-    if let Some(home) = dirs_fallback() {
-        let skills = home.join(".octos").join("skills").join("mofa");
-        if skills.join("config.json").exists() {
-            return skills.parent().unwrap().parent().unwrap().to_path_buf();
-        }
-    }
-    cwd
+    let exe = std::env::current_exe().ok();
+    resolve_mofa_root(&cwd, exe.as_deref())
 }
 
-fn dirs_fallback() -> Option<PathBuf> {
-    std::env::var("HOME").ok().map(PathBuf::from)
+fn resolve_mofa_root(cwd: &Path, exe: Option<&Path>) -> PathBuf {
+    if cwd.join("mofa").join("config.json").exists() {
+        return cwd.to_path_buf();
+    }
+
+    if let Some(parent) = exe.and_then(|path| path.parent()).and_then(|p| p.parent()) {
+        if parent.join("mofa").join("config.json").exists() {
+            return parent.to_path_buf();
+        }
+    }
+
+    cwd.to_path_buf()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::resolve_mofa_root;
+
+    fn unique_temp_dir(name: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "mofa-root-test-{name}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn resolve_mofa_root_prefers_cwd() {
+        let cwd = unique_temp_dir("cwd");
+        std::fs::create_dir_all(cwd.join("mofa")).unwrap();
+        std::fs::write(cwd.join("mofa").join("config.json"), "{}").unwrap();
+
+        let root = resolve_mofa_root(&cwd, None);
+        assert_eq!(root, cwd);
+    }
+
+    #[test]
+    fn resolve_mofa_root_uses_binary_relative_install() {
+        let root = unique_temp_dir("bin");
+        std::fs::create_dir_all(root.join("mofa")).unwrap();
+        std::fs::write(root.join("mofa").join("config.json"), "{}").unwrap();
+        let exe = root.join("mofa-slides").join("main");
+        std::fs::create_dir_all(exe.parent().unwrap()).unwrap();
+        std::fs::write(&exe, "").unwrap();
+
+        let fallback_cwd = unique_temp_dir("fallback");
+        let resolved = resolve_mofa_root(&fallback_cwd, Some(&exe));
+        assert_eq!(resolved, root);
+    }
+
+    #[test]
+    fn resolve_mofa_root_does_not_use_global_home_fallback() {
+        let cwd = unique_temp_dir("plain");
+        let fake_exe = cwd.join("bin").join("mofa");
+        std::fs::create_dir_all(fake_exe.parent().unwrap()).unwrap();
+        std::fs::write(&fake_exe, "").unwrap();
+
+        let root = resolve_mofa_root(&cwd, Some(&fake_exe));
+        assert_eq!(root, cwd);
+    }
 }
