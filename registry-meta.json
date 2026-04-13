@@ -1,6 +1,6 @@
 {
   "name": "mofa-skills",
-  "version": "0.4.3",
+  "version": "0.4.5",
   "description": "AI-powered content creation suite: presentations, cards, comics, infographics, lesson websites, deployment workflows, voice cloning, and office document processing",
   "repo": "mofa-org/mofa-skills",
   "exclude_skills": [
