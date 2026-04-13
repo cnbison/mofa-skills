@@ -29,7 +29,8 @@ impl Style {
 pub fn load_style(path: &Path) -> Result<Style> {
     let content = std::fs::read_to_string(path)
         .wrap_err_with(|| format!("reading style: {}", path.display()))?;
-    let parsed: toml::Value = content.parse::<toml::Value>()
+    let parsed: toml::Value = content
+        .parse::<toml::Value>()
         .wrap_err_with(|| format!("parsing TOML: {}", path.display()))?;
 
     let meta = parsed.get("meta").cloned();

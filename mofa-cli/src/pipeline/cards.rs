@@ -43,15 +43,18 @@ pub fn run(
             .and_then(|c| c.aspect_ratio.as_deref())
             .unwrap_or("9:16"),
     );
-    let size = image_size.or(
-        cfg.defaults
-            .cards
-            .as_ref()
-            .and_then(|c| c.image_size.as_deref()),
-    );
+    let size = image_size.or(cfg
+        .defaults
+        .cards
+        .as_ref()
+        .and_then(|c| c.image_size.as_deref()));
     let model = gen_model.unwrap_or(cfg.gen_model());
 
-    let mode_str = if batch { "batch, ".to_string() } else { format!("{concurrency} parallel, ") };
+    let mode_str = if batch {
+        "batch, ".to_string()
+    } else {
+        format!("{concurrency} parallel, ")
+    };
     eprintln!("Generating {total} cards ({mode_str}{ar})...");
 
     let result = if batch {
@@ -75,11 +78,31 @@ pub fn run(
             Ok(r) => r,
             Err(e) => {
                 eprintln!("Batch failed ({e}), falling back to parallel sync...");
-                gen_cards_sync(&gemini, card_dir, cards, style, total, model, ar, size, concurrency)
+                gen_cards_sync(
+                    &gemini,
+                    card_dir,
+                    cards,
+                    style,
+                    total,
+                    model,
+                    ar,
+                    size,
+                    concurrency,
+                )
             }
         }
     } else {
-        gen_cards_sync(&gemini, card_dir, cards, style, total, model, ar, size, concurrency)
+        gen_cards_sync(
+            &gemini,
+            card_dir,
+            cards,
+            style,
+            total,
+            model,
+            ar,
+            size,
+            concurrency,
+        )
     };
 
     let ok = result.iter().filter(|p| p.is_some()).count();
@@ -99,8 +122,7 @@ fn gen_cards_sync(
     size: Option<&str>,
     concurrency: usize,
 ) -> Vec<Option<PathBuf>> {
-    let paths: Arc<Mutex<Vec<Option<PathBuf>>>> =
-        Arc::new(Mutex::new(vec![None; total]));
+    let paths: Arc<Mutex<Vec<Option<PathBuf>>>> = Arc::new(Mutex::new(vec![None; total]));
 
     let pool = rayon::ThreadPoolBuilder::new()
         .num_threads(concurrency)

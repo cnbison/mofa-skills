@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MoFA Site Studio</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <section id="launcher" class="launcher-shell">
+      <div class="launcher-window">
+        <div class="launcher-copy">
+          <p class="eyebrow">MoFA Site Studio</p>
+          <h1>Start with a site command, then let the backend build the skeleton.</h1>
+          <p class="muted">
+            The session launcher creates a real scaffold on the server side. After that,
+            the studio opens into three panels: chat, live preview, and the generated
+            site tree.
+          </p>
+        </div>
+
+        <div id="launcher-cards" class="launcher-cards"></div>
+
+        <form id="launch-form" class="launcher-form">
+          <label>
+            Session command
+            <input id="session-command" type="text" placeholder="/new site astro" />
+          </label>
+          <label>
+            Site name
+            <input id="site-name-input" type="text" placeholder="Signal Atlas" />
+          </label>
+          <label>
+            Project brief
+            <textarea
+              id="site-description-input"
+              rows="4"
+              placeholder="Structured docs site for product guides, onboarding, and reference pages."
+            ></textarea>
+          </label>
+          <div class="button-row">
+            <button id="launch-session" class="button button-primary" type="submit">Build session</button>
+            <button id="reuse-session" class="button button-secondary" type="button">Reuse last session</button>
+          </div>
+        </form>
+
+        <section class="launcher-preview panel">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">What happens next</p>
+              <h2>Backend scaffold preview</h2>
+            </div>
+          </div>
+          <pre id="launcher-preview" class="prompt-view"></pre>
+        </section>
+      </div>
+    </section>
+
+    <main id="studio-shell" class="studio-shell" hidden>
+      <aside class="panel panel-column chat-panel">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">Builder Chat</p>
+            <h2 id="session-title">No session</h2>
+          </div>
+          <button id="new-session" class="button button-secondary" type="button">New session</button>
+        </div>
+
+        <section class="session-card">
+          <div class="session-stats">
+            <div>
+              <span class="stat-label">Template</span>
+              <strong id="session-template">-</strong>
+            </div>
+            <div>
+              <span class="stat-label">Kind</span>
+              <strong id="session-kind">-</strong>
+            </div>
+            <div>
+              <span class="stat-label">Runtime</span>
+              <strong id="session-runtime">-</strong>
+            </div>
+          </div>
+          <p id="session-summary" class="muted"></p>
+          <div class="session-links">
+            <a id="session-preview-link" href="#" target="_blank" rel="noreferrer">Open preview</a>
+            <span id="session-root"></span>
+          </div>
+        </section>
+
+        <div id="chat-log" class="chat-log"></div>
+
+        <div class="quick-actions">
+          <button class="chip" data-chat="/new site astro" type="button">/new site astro</button>
+          <button class="chip" data-chat="/new site nextjs" type="button">/new site nextjs</button>
+          <button class="chip" data-chat="add page FAQ" type="button">add page FAQ</button>
+          <button class="chip" data-chat="rename site to Signal Atlas Docs" type="button">rename site</button>
+        </div>
+
+        <form id="chat-form" class="chat-form">
+          <label class="chat-label" for="chat-input">Tell the builder what to change</label>
+          <textarea
+            id="chat-input"
+            rows="4"
+            placeholder="rename site to Signal Atlas Docs"
+          ></textarea>
+          <div class="button-row">
+            <button id="send-chat" class="button button-primary" type="submit">Send</button>
+          </div>
+        </form>
+      </aside>
+
+      <section class="panel panel-column preview-panel">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">Live Site</p>
+            <h2>Iframe preview</h2>
+          </div>
+          <div class="preview-toolbar">
+            <code id="preview-url">-</code>
+            <button id="refresh-preview" class="button button-secondary" type="button">Refresh</button>
+          </div>
+        </div>
+
+        <div id="page-strip" class="page-strip"></div>
+        <iframe id="site-frame" class="site-frame" title="Site preview"></iframe>
+      </section>
+
+      <aside class="panel panel-column files-panel">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">Generated Files</p>
+            <h2>Site tree and source viewer</h2>
+          </div>
+          <button id="refresh-files" class="button button-secondary" type="button">Refresh</button>
+        </div>
+
+        <div class="panel-subhead">
+          <span class="stat-label">Project root</span>
+          <code id="project-root">-</code>
+        </div>
+
+        <div class="files-stack">
+          <div id="file-tree" class="file-tree"></div>
+
+          <section class="viewer">
+            <div class="viewer-head">
+              <strong id="viewer-path">Select a file</strong>
+              <span id="viewer-kind" class="viewer-kind">viewer</span>
+            </div>
+            <pre id="file-content" class="file-content"></pre>
+          </section>
+        </div>
+      </aside>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>

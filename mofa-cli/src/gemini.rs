@@ -90,10 +90,9 @@ fn extract_image_from_parts(parts: &[Value]) -> Option<Vec<u8>> {
     for part in parts {
         if let Some(inline) = part.get("inlineData") {
             if let Some(b64) = inline.get("data").and_then(|d| d.as_str()) {
-                if let Ok(bytes) = base64::Engine::decode(
-                    &base64::engine::general_purpose::STANDARD,
-                    b64,
-                ) {
+                if let Ok(bytes) =
+                    base64::Engine::decode(&base64::engine::general_purpose::STANDARD, b64)
+                {
                     return Some(bytes);
                 }
             }
@@ -148,9 +147,8 @@ impl GeminiClient {
         model: Option<&str>,
         label: Option<&str>,
     ) -> Result<Option<std::path::PathBuf>> {
-        let tag = label.unwrap_or_else(|| {
-            out_file.file_stem().unwrap().to_str().unwrap_or("image")
-        });
+        let tag =
+            label.unwrap_or_else(|| out_file.file_stem().unwrap().to_str().unwrap_or("image"));
         let model = model.unwrap_or(DEFAULT_GEN_MODEL);
 
         if is_cached(out_file) {
@@ -192,7 +190,10 @@ impl GeminiClient {
                     }
                 }
                 Err(e) => {
-                    eprintln!("{tag}: error {attempt}/3 — {}", self.sanitize(&format!("{e}")));
+                    eprintln!(
+                        "{tag}: error {attempt}/3 — {}",
+                        self.sanitize(&format!("{e}"))
+                    );
                 }
             }
             if attempt < 3 {
@@ -221,8 +222,15 @@ impl GeminiClient {
         }
 
         let img_data = std::fs::read(image_path)?;
-        let ext = image_path.extension().and_then(|e| e.to_str()).unwrap_or("png");
-        let mime = if ext == "jpg" || ext == "jpeg" { "image/jpeg" } else { "image/png" };
+        let ext = image_path
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("png");
+        let mime = if ext == "jpg" || ext == "jpeg" {
+            "image/jpeg"
+        } else {
+            "image/png"
+        };
         let b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &img_data);
 
         let parts = vec![
@@ -231,7 +239,10 @@ impl GeminiClient {
         ];
 
         let config = json!({ "responseModalities": ["IMAGE", "TEXT"] });
-        let url = format!("{}/models/{model}:generateContent?key={}", self.base_url, self.api_key);
+        let url = format!(
+            "{}/models/{model}:generateContent?key={}",
+            self.base_url, self.api_key
+        );
         let body = json!({
             "contents": [{ "role": "user", "parts": parts }],
             "generationConfig": config,
@@ -241,7 +252,10 @@ impl GeminiClient {
             match self.http.post(&url).json(&body).send() {
                 Ok(resp) => {
                     if let Ok(data) = resp.json::<Value>() {
-                        if let Some(parts) = data.pointer("/candidates/0/content/parts").and_then(|p| p.as_array()) {
+                        if let Some(parts) = data
+                            .pointer("/candidates/0/content/parts")
+                            .and_then(|p| p.as_array())
+                        {
                             if let Some(bytes) = extract_image_from_parts(parts) {
                                 if let Some(parent) = out_file.parent() {
                                     std::fs::create_dir_all(parent).ok();
@@ -255,7 +269,10 @@ impl GeminiClient {
                     }
                 }
                 Err(e) => {
-                    eprintln!("{tag}: error {attempt}/3 — {}", self.sanitize(&format!("{e}")));
+                    eprintln!(
+                        "{tag}: error {attempt}/3 — {}",
+                        self.sanitize(&format!("{e}"))
+                    );
                 }
             }
             if attempt < 3 {
@@ -324,10 +341,7 @@ impl GeminiClient {
                 })
                 .collect::<Result<Vec<_>>>()?;
 
-            let url = format!(
-                "{}/models/{model}:batchGenerateContent",
-                self.base_url
-            );
+            let url = format!("{}/models/{model}:batchGenerateContent", self.base_url);
 
             let body = json!({
                 "batch": {
@@ -378,15 +392,11 @@ impl GeminiClient {
                 std::thread::sleep(std::time::Duration::from_secs(interval as u64));
                 elapsed += interval as u64;
 
-                let poll_url = format!(
-                    "{}/{batch_name}?key={}",
-                    self.base_url, self.api_key
-                );
-                let poll_resp = self
-                    .http
-                    .get(&poll_url)
-                    .send()
-                    .map_err(|e| eyre::eyre!("Batch poll: {}", self.sanitize(&format!("{e}"))))?;
+                let poll_url = format!("{}/{batch_name}?key={}", self.base_url, self.api_key);
+                let poll_resp =
+                    self.http.get(&poll_url).send().map_err(|e| {
+                        eyre::eyre!("Batch poll: {}", self.sanitize(&format!("{e}")))
+                    })?;
                 let poll_data: Value = poll_resp.json()?;
 
                 let state = poll_data
@@ -401,9 +411,12 @@ impl GeminiClient {
                         eprintln!();
                         break poll_data;
                     }
-                    "JOB_STATE_FAILED" | "BATCH_STATE_FAILED"
-                    | "JOB_STATE_CANCELLED" | "BATCH_STATE_CANCELLED"
-                    | "JOB_STATE_EXPIRED" | "BATCH_STATE_EXPIRED" => {
+                    "JOB_STATE_FAILED"
+                    | "BATCH_STATE_FAILED"
+                    | "JOB_STATE_CANCELLED"
+                    | "BATCH_STATE_CANCELLED"
+                    | "JOB_STATE_EXPIRED"
+                    | "BATCH_STATE_EXPIRED" => {
                         eprintln!();
                         return Err(eyre::eyre!("Batch {state}"));
                     }
@@ -459,12 +472,7 @@ impl GeminiClient {
     }
 
     /// Vision QA: send image to Gemini vision model and get structured JSON response.
-    pub fn vision_qa(
-        &self,
-        image_path: &Path,
-        prompt: &str,
-        model: Option<&str>,
-    ) -> Result<Value> {
+    pub fn vision_qa(&self, image_path: &Path, prompt: &str, model: Option<&str>) -> Result<Value> {
         let model = model.unwrap_or("gemini-3.1-flash-image-preview");
         let img_data = std::fs::read(image_path)?;
         let ext = image_path
@@ -500,7 +508,11 @@ impl GeminiClient {
             }
         });
 
-        let resp = self.http.post(&url).json(&body).send()
+        let resp = self
+            .http
+            .post(&url)
+            .json(&body)
+            .send()
             .map_err(|e| eyre::eyre!("{}", self.sanitize(&format!("{e}"))))?;
         let data: Value = resp.json()?;
 

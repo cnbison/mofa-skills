@@ -120,11 +120,15 @@ impl MofaConfig {
     }
 
     pub fn gen_model(&self) -> &str {
-        self.gen_model.as_deref().unwrap_or("gemini-3.1-flash-image-preview")
+        self.gen_model
+            .as_deref()
+            .unwrap_or("gemini-3.1-flash-image-preview")
     }
 
     pub fn vision_model(&self) -> &str {
-        self.vision_model.as_deref().unwrap_or("gemini-3.1-flash-image-preview")
+        self.vision_model
+            .as_deref()
+            .unwrap_or("gemini-3.1-flash-image-preview")
     }
 
     pub fn edit_model(&self) -> &str {
@@ -146,13 +150,6 @@ impl MofaConfig {
     }
 }
 
-/// Find the mofa root directory by walking up from the binary or CWD.
-pub fn find_mofa_root() -> PathBuf {
-    let cwd = std::env::current_dir().unwrap_or_default();
-    let exe = std::env::current_exe().ok();
-    resolve_mofa_root(&cwd, exe.as_deref())
-}
-
 fn resolve_mofa_root(cwd: &Path, exe: Option<&Path>) -> PathBuf {
     if cwd.join("mofa").join("config.json").exists() {
         return cwd.to_path_buf();
@@ -165,6 +162,13 @@ fn resolve_mofa_root(cwd: &Path, exe: Option<&Path>) -> PathBuf {
     }
 
     cwd.to_path_buf()
+}
+
+/// Find the mofa root directory by walking up from the binary or CWD.
+pub fn find_mofa_root() -> PathBuf {
+    let cwd = std::env::current_dir().unwrap_or_default();
+    let exe = std::env::current_exe().ok();
+    resolve_mofa_root(&cwd, exe.as_deref())
 }
 
 #[cfg(test)]

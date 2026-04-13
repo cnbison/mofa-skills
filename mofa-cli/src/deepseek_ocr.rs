@@ -60,10 +60,7 @@ impl DeepSeekOcrClient {
     /// OCR with grounding: returns text blocks with bounding boxes.
     pub fn ocr_with_grounding(&self, image_path: &Path) -> Result<Vec<OcrBlock>> {
         let img_data = std::fs::read(image_path)?;
-        let b64 = base64::Engine::encode(
-            &base64::engine::general_purpose::STANDARD,
-            &img_data,
-        );
+        let b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &img_data);
 
         let body = serde_json::json!({
             "image": b64,
@@ -72,13 +69,12 @@ impl DeepSeekOcrClient {
             "repetition_penalty": 1.3,
         });
 
-        eprintln!("  DeepSeek-OCR: sending image ({} KB)...", img_data.len() / 1024);
+        eprintln!(
+            "  DeepSeek-OCR: sending image ({} KB)...",
+            img_data.len() / 1024
+        );
 
-        let resp = self
-            .http
-            .post(&self.endpoint)
-            .json(&body)
-            .send()?;
+        let resp = self.http.post(&self.endpoint).json(&body).send()?;
 
         let data: Value = resp.json()?;
 

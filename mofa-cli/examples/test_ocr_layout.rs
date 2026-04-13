@@ -12,15 +12,16 @@ fn main() -> eyre::Result<()> {
     color_eyre::install()?;
 
     let args: Vec<String> = std::env::args().collect();
-    let img_path = args.get(1).map(|s| s.as_str()).unwrap_or(
-        "/Users/yuechen/home/cc-ppt/slides-huawei-fullstack/slide-01.png",
-    );
+    let img_path = args
+        .get(1)
+        .map(|s| s.as_str())
+        .unwrap_or("/Users/yuechen/home/cc-ppt/slides-huawei-fullstack/slide-01.png");
     let img = Path::new(img_path);
 
     let ds_key = std::env::var("DASHSCOPE_API_KEY")
         .map_err(|_| eyre::eyre!("Set DASHSCOPE_API_KEY env var"))?;
-    let gm_key = std::env::var("GEMINI_API_KEY")
-        .map_err(|_| eyre::eyre!("Set GEMINI_API_KEY env var"))?;
+    let gm_key =
+        std::env::var("GEMINI_API_KEY").map_err(|_| eyre::eyre!("Set GEMINI_API_KEY env var"))?;
 
     let ds = DashscopeClient::new(ds_key);
     let gm = GeminiClient::new(gm_key);
@@ -47,13 +48,7 @@ fn main() -> eyre::Result<()> {
     let ocr_overlays = extract_text_layout_ocr(&ds, &gm, img, SW, SH, None, None)?;
     eprintln!("\n{} text blocks:\n", ocr_overlays.len());
     for (i, ov) in ocr_overlays.iter().enumerate() {
-        let text: String = ov
-            .text
-            .as_deref()
-            .unwrap_or("")
-            .chars()
-            .take(60)
-            .collect();
+        let text: String = ov.text.as_deref().unwrap_or("").chars().take(60).collect();
         eprintln!(
             "  [{i:2}] x={:.2}\" y={:.2}\" w={:.2}\" h={:.2}\"  fs={:.1}pt  color={}  bold={}  \"{}\"",
             ov.x,
@@ -72,13 +67,7 @@ fn main() -> eyre::Result<()> {
     let vqa_overlays = extract_text_layout(&gm, img, SW, SH, None, None)?;
     eprintln!("\n{} text elements:\n", vqa_overlays.len());
     for (i, ov) in vqa_overlays.iter().enumerate() {
-        let text: String = ov
-            .text
-            .as_deref()
-            .unwrap_or("")
-            .chars()
-            .take(60)
-            .collect();
+        let text: String = ov.text.as_deref().unwrap_or("").chars().take(60).collect();
         eprintln!(
             "  [{i:2}] x={:.2}\" y={:.2}\" w={:.2}\" h={:.2}\"  fs={:.1}pt  color={}  bold={}  \"{}\"",
             ov.x,

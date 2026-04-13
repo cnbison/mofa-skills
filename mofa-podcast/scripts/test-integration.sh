@@ -124,6 +124,22 @@ else
     fail "3.4 Invalid JSON returns error" "$OUT"
 fi
 
+# 3.5 Malformed non-metadata line
+OUT=$(echo '{"script": "[Host - vivian, calm] ok\nthis is malformed"}' | "$BINARY" podcast_generate 2>/dev/null || true)
+if echo "$OUT" | grep -q "malformed non-metadata lines"; then
+    pass "3.5 Malformed script line returns error"
+else
+    fail "3.5 Malformed script line returns error" "$OUT"
+fi
+
+# 3.6 Unknown voice fails before generation
+OUT=$(echo '{"script": "[Host - not_a_real_voice, calm] hello"}' | "$BINARY" podcast_generate 2>/dev/null || true)
+if echo "$OUT" | grep -q "unknown voice"; then
+    pass "3.6 Unknown voice returns helpful error"
+else
+    fail "3.6 Unknown voice returns helpful error" "$OUT"
+fi
+
 # ── 4. Script file input ──────────────────────────────────────────
 
 echo ""

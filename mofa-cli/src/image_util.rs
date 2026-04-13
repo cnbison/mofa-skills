@@ -30,8 +30,8 @@ pub fn stitch_horizontal(paths: &[&Path], gutter: u32, out_file: &Path) -> Resul
     let max_h = images.iter().map(|img| img.height()).max().unwrap();
 
     // Total width = sum of widths + gutters
-    let total_w: u32 = images.iter().map(|img| img.width()).sum::<u32>()
-        + gutter * (images.len() as u32 - 1);
+    let total_w: u32 =
+        images.iter().map(|img| img.width()).sum::<u32>() + gutter * (images.len() as u32 - 1);
 
     let mut canvas = RgbaImage::new(total_w, max_h);
 
@@ -71,8 +71,8 @@ pub fn stitch_vertical(paths: &[&Path], gutter: u32, out_file: &Path) -> Result<
     let max_w = images.iter().map(|img| img.width()).max().unwrap();
 
     // Total height = sum of heights + gutters
-    let total_h: u32 = images.iter().map(|img| img.height()).sum::<u32>()
-        + gutter * (images.len() as u32 - 1);
+    let total_h: u32 =
+        images.iter().map(|img| img.height()).sum::<u32>() + gutter * (images.len() as u32 - 1);
 
     let mut canvas = RgbaImage::new(max_w, total_h);
 

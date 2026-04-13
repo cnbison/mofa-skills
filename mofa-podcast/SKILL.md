@@ -96,13 +96,13 @@ The `podcast_generate` tool:
 3. Assigns sequential segment IDs (`seg_001`, `seg_002`, ...)
 4. **Generates built-in voices first**, then cloned voices (minimizes model switching)
 5. Within each voice type, groups by persona (avoids reloading)
-6. Saves segments as `{voice}_seg_{NNN}.wav`
+6. Saves segments as sanitized `seg_{NNN}_{voice}.wav` files inside the output `segments/` directory
 7. Concatenates all segments in timeline order
 8. Inserts natural pauses between speakers (~400ms) and at `[PAUSE]` cues
-9. Outputs final MP3 via ffmpeg
+9. Outputs final audio via ffmpeg when available, otherwise returns a WAV fallback
 
 ## Output
 
 - Script: `skill-output/mofa-podcast/script.md`
 - Segments: `skill-output/mofa-podcast/segments/*.wav`
-- Final audio: `skill-output/mofa-podcast/podcast_<timestamp>.mp3`
+- Final audio: `skill-output/mofa-podcast/podcast_<timestamp>.mp3` (or `.wav` fallback if MP3 conversion is unavailable)

@@ -45,9 +45,12 @@ fn animate_card(
     // Get raw video duration & dimensions via ffprobe
     let dur_output = Command::new("ffprobe")
         .args([
-            "-v", "quiet",
-            "-show_entries", "format=duration",
-            "-of", "csv=p=0",
+            "-v",
+            "quiet",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "csv=p=0",
         ])
         .arg(&raw_video)
         .output()?;
@@ -58,10 +61,14 @@ fn animate_card(
 
     let dims_output = Command::new("ffprobe")
         .args([
-            "-v", "quiet",
-            "-select_streams", "v:0",
-            "-show_entries", "stream=width,height",
-            "-of", "csv=p=0",
+            "-v",
+            "quiet",
+            "-select_streams",
+            "v:0",
+            "-show_entries",
+            "stream=width,height",
+            "-of",
+            "csv=p=0",
         ])
         .arg(&raw_video)
         .output()?;
@@ -94,7 +101,10 @@ fn animate_card(
     Command::new("ffmpeg")
         .args(["-y", "-i"])
         .arg(&raw_video)
-        .args(["-c:v", "libx264", "-preset", "medium", "-crf", "20", "-r", "24", "-pix_fmt", "yuv420p", "-an"])
+        .args([
+            "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-r", "24", "-pix_fmt",
+            "yuv420p", "-an",
+        ])
         .arg(&anim_clip)
         .output()?;
 
@@ -169,8 +179,7 @@ fn gen_video_images_sync(
     size: Option<&str>,
     concurrency: usize,
 ) -> Vec<Option<PathBuf>> {
-    let img_paths: Arc<Mutex<Vec<Option<PathBuf>>>> =
-        Arc::new(Mutex::new(vec![None; total]));
+    let img_paths: Arc<Mutex<Vec<Option<PathBuf>>>> = Arc::new(Mutex::new(vec![None; total]));
 
     let pool = rayon::ThreadPoolBuilder::new()
         .num_threads(concurrency)
@@ -234,12 +243,11 @@ pub fn run(
     std::fs::create_dir_all(card_dir)?;
     let total = cards.len();
     let ar = aspect_ratio.unwrap_or("9:16");
-    let size = image_size.or(
-        cfg.defaults
-            .cards
-            .as_ref()
-            .and_then(|c| c.image_size.as_deref()),
-    );
+    let size = image_size.or(cfg
+        .defaults
+        .cards
+        .as_ref()
+        .and_then(|c| c.image_size.as_deref()));
     let model = cfg.gen_model();
 
     // Phase 1: Generate all card images
@@ -266,11 +274,31 @@ pub fn run(
             Ok(r) => r,
             Err(e) => {
                 eprintln!("Batch failed ({e}), falling back to parallel sync...");
-                gen_video_images_sync(&gemini, card_dir, cards, style, total, model, ar, size, concurrency)
+                gen_video_images_sync(
+                    &gemini,
+                    card_dir,
+                    cards,
+                    style,
+                    total,
+                    model,
+                    ar,
+                    size,
+                    concurrency,
+                )
             }
         }
     } else {
-        gen_video_images_sync(&gemini, card_dir, cards, style, total, model, ar, size, concurrency)
+        gen_video_images_sync(
+            &gemini,
+            card_dir,
+            cards,
+            style,
+            total,
+            model,
+            ar,
+            size,
+            concurrency,
+        )
     };
 
     // Phase 2: Animate each card (sequential — Veo has rate limits)
@@ -315,6 +343,9 @@ pub fn run(
 
     let ok_img = img_paths_vec.iter().filter(|p| p.is_some()).count();
     let ok_vid = video_paths.iter().filter(|p| p.is_some()).count();
-    eprintln!("\nDone: {ok_img}/{total} images, {ok_vid}/{total} videos in {}/", card_dir.display());
+    eprintln!(
+        "\nDone: {ok_img}/{total} images, {ok_vid}/{total} videos in {}/",
+        card_dir.display()
+    );
     Ok((img_paths_vec, video_paths))
 }

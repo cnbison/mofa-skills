@@ -22,6 +22,8 @@ AI-powered content generation platform that turns text into visual media — pre
 | **mofa-crawler** | text | — | Web crawling via Cloudflare Browser Rendering API — full-site extraction with JS rendering |
 | **mofa-logo** | SVG | 8 styles | AI logo generation with Claude Opus 4.6 — minimalist, mascot, emblem, wordmark |
 | **mofa-fm** | `.wav` | — | Voice TTS with custom voice cloning via Qwen3-TTS on Apple Silicon |
+| **mofa-site** | static HTML / starter source | Quarto, Astro, Next.js, React | Build lesson sites, scaffold extracted templates, and run a server-backed site studio |
+| **mofa-publish** | live URL | GitHub Pages, Mac Mini | Deploy built static sites and verify the live URL |
 
 ### DingTalk Wukong Skills (from [stvlynn/dingtalk-wukong-skills](https://github.com/stvlynn/dingtalk-wukong-skills))
 
@@ -66,6 +68,8 @@ mofa-skills/
 ├── mofa-crawler/         # Web crawling via Cloudflare Browser Rendering API
 ├── mofa-logo/            # AI logo generation with Claude Opus 4.6
 ├── mofa-fm/              # Voice TTS + cloning (Pure Rust, via ominix-api)
+├── mofa-site/            # Multi-template website builder and studio
+├── mofa-publish/         # Static site deployment to GitHub Pages / Mini hosting
 │
 └── mofa-cli/             # Pure Rust CLI (single binary, no Node.js)
     └── src/
@@ -93,6 +97,8 @@ Two implementation stacks share the same config format, style system, and TOML t
 - **Node.js** — for the JS engine
 - **ffmpeg** — for video compositing (mofa-video)
 - **ImageMagick** (`magick`) — for comic/infographic stitching (JS engine only)
+- **Quarto** — for `mofa-site` Quarto lesson builds
+- **GitHub CLI / SSH** — for `mofa-publish` deployments
 
 ### Configuration
 
@@ -206,6 +212,14 @@ The [octos-hub](https://github.com/octos-org/octos-hub) is automatically synced 
 - **Remove a skill**: Delete the directory, or add it to `exclude_skills` in `registry-meta.json`.
 - **Update tags/description**: Edit `registry-meta.json`.
 - **Add binary requirements**: Set `requires.bins` in the skill's `manifest.json` (e.g., `"requires": {"bins": ["ominix-api"]}`).
+
+## mofa-site Design Principle
+
+`mofa-site` is static-first.
+
+- The studio can be stateful, but the generated site should build to static assets and deploy cleanly with GitHub Pages or `mofa-publish`.
+- Dynamic site features should default to a shared multitenant backend API, not a dedicated Node/Rust server per sub account.
+- A per-site runtime is an exception for advanced cases, not the default website generation model.
 
 ### Setup (repo admin)
 

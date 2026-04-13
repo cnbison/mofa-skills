@@ -21,8 +21,8 @@
     {
       "name": "podcast_generate",
       "spawn_only": true,
-      "spawn_only_message": "SUCCESS: Podcast generation is now running in background. Voice segments are being generated and will be assembled into the final MP3. The audio file will be automatically delivered when ready.",
-      "description": "Generate the full podcast audio from an approved markdown script. Parses all speaker lines, generates TTS for each segment (built-in voices first, then cloned to minimize model switching), concatenates in timeline order with pauses, and outputs a single MP3 file. This runs in background — do NOT wait for it.",
+      "spawn_only_message": "SUCCESS: Podcast generation is now running in background. Voice segments are being generated and will be assembled into the final audio file. The audio file will be automatically delivered when ready.",
+      "description": "Generate the full podcast audio from an approved markdown script. Parses all speaker lines, generates TTS for each segment (built-in voices first, then cloned to minimize model switching), concatenates in timeline order with pauses, and outputs a single final audio file. This runs in background — do NOT wait for it.",
       "input_schema": {
         "type": "object",
         "properties": {

@@ -280,8 +280,8 @@ fn find_styles_dir(mofa_root: &std::path::Path, skill_name: &str) -> PathBuf {
 fn run_plugin(tool_name: &str) -> Result<()> {
     let mut input_json = String::new();
     std::io::stdin().read_to_string(&mut input_json)?;
-    let args: serde_json::Value = serde_json::from_str(&input_json)
-        .unwrap_or_else(|_| serde_json::json!({}));
+    let args: serde_json::Value =
+        serde_json::from_str(&input_json).unwrap_or_else(|_| serde_json::json!({}));
 
     // Resolve mofa root relative to the binary location:
     // binary is at <skills_dir>/<skill>/main, so parent.parent = skills_dir
@@ -323,7 +323,10 @@ fn run_plugin(tool_name: &str) -> Result<()> {
             println!("{}", serde_json::json!({"output": output, "success": true}));
         }
         Err(e) => {
-            println!("{}", serde_json::json!({"output": format!("{e:#}"), "success": false}));
+            println!(
+                "{}",
+                serde_json::json!({"output": format!("{e:#}"), "success": false})
+            );
         }
     }
     Ok(())
@@ -344,7 +347,9 @@ fn resolve_temp_dir(prefix: &str) -> PathBuf {
 /// Relocate a path under data dir/tmp/ if set and the path
 /// is under the system temp directory. This ensures per-profile isolation.
 fn relocate_path(path: &std::path::Path) -> PathBuf {
-    if let Ok(data_dir) = std::env::var("OCTOS_DATA_DIR").or_else(|_| std::env::var("CREW_DATA_DIR")) {
+    if let Ok(data_dir) =
+        std::env::var("OCTOS_DATA_DIR").or_else(|_| std::env::var("CREW_DATA_DIR"))
+    {
         let sys_tmp = std::env::temp_dir();
         if path.starts_with(&sys_tmp) {
             let relative = path.strip_prefix(&sys_tmp).unwrap_or(path);
@@ -363,20 +368,36 @@ fn plugin_slides(
     mofa_root: &std::path::Path,
     cfg: &config::MofaConfig,
 ) -> Result<String> {
-    let style_name = args.get("style").and_then(|v| v.as_str()).unwrap_or("nb-pro");
-    let out_str = args.get("out").and_then(|v| v.as_str())
+    let style_name = args
+        .get("style")
+        .and_then(|v| v.as_str())
+        .unwrap_or("nb-pro");
+    let out_str = args
+        .get("out")
+        .and_then(|v| v.as_str())
         .ok_or_else(|| eyre::eyre!("missing 'out' (output PPTX path)"))?;
     let out = relocate_path(std::path::Path::new(out_str));
-    let slide_dir = args.get("slide_dir").and_then(|v| v.as_str())
+    let slide_dir = args
+        .get("slide_dir")
+        .and_then(|v| v.as_str())
         .map(|s| relocate_path(std::path::Path::new(s)))
         .unwrap_or_else(|| resolve_temp_dir("mofa-slides"));
-    let concurrency = args.get("concurrency").and_then(|v| v.as_u64()).unwrap_or(5) as usize;
+    let concurrency = args
+        .get("concurrency")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(5) as usize;
     let image_size = args.get("image_size").and_then(|v| v.as_str());
     let gen_model = args.get("gen_model").and_then(|v| v.as_str());
     let ref_image_size = args.get("ref_image_size").and_then(|v| v.as_str());
     let vision_model = args.get("vision_model").and_then(|v| v.as_str());
-    let auto_layout = args.get("auto_layout").and_then(|v| v.as_bool()).unwrap_or(false);
-    let refine = args.get("refine").and_then(|v| v.as_bool()).unwrap_or(false);
+    let auto_layout = args
+        .get("auto_layout")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let refine = args
+        .get("refine")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
 
     // Support `input` parameter: read slides from a JS/JSON file.
     // JS files are evaluated via Node.js (module.exports = [...]).
@@ -385,14 +406,19 @@ fn plugin_slides(
         if !path.exists() {
             eyre::bail!("input file not found: {}", path.display());
         }
-        let is_js = path.extension().is_some_and(|e| e == "js" || e == "mjs" || e == "cjs");
+        let is_js = path
+            .extension()
+            .is_some_and(|e| e == "js" || e == "mjs" || e == "cjs");
         if is_js {
             // Canonicalize to absolute path — Node require() treats bare
             // relative paths (no ./ prefix) as node_modules lookups.
             let abs_path = std::fs::canonicalize(&path).unwrap_or(path.clone());
             let output = std::process::Command::new("node")
                 .arg("-e")
-                .arg(format!("console.log(JSON.stringify(require('{}')))", abs_path.display()))
+                .arg(format!(
+                    "console.log(JSON.stringify(require('{}')))",
+                    abs_path.display()
+                ))
                 .output()
                 .map_err(|e| eyre::eyre!("failed to run node: {e}"))?;
             if !output.status.success() {
@@ -416,16 +442,24 @@ fn plugin_slides(
     // Relocate embedded file paths (source_image, images, overlay_images) for per-profile isolation
     for slide in &mut slides {
         if let Some(ref src) = slide.source_image {
-            slide.source_image = Some(relocate_path(std::path::Path::new(src)).to_string_lossy().to_string());
+            slide.source_image = Some(
+                relocate_path(std::path::Path::new(src))
+                    .to_string_lossy()
+                    .to_string(),
+            );
         }
         if let Some(ref mut imgs) = slide.images {
             for img in imgs.iter_mut() {
-                *img = relocate_path(std::path::Path::new(img)).to_string_lossy().to_string();
+                *img = relocate_path(std::path::Path::new(img))
+                    .to_string_lossy()
+                    .to_string();
             }
         }
         if let Some(ref mut overlays) = slide.overlay_images {
             for ov in overlays.iter_mut() {
-                ov.path = relocate_path(std::path::Path::new(&ov.path)).to_string_lossy().to_string();
+                ov.path = relocate_path(std::path::Path::new(&ov.path))
+                    .to_string_lossy()
+                    .to_string();
             }
         }
     }
@@ -459,8 +493,18 @@ fn plugin_slides(
 
     let batch = args.get("api").and_then(|v| v.as_str()).unwrap_or("rt") == "batch";
     pipeline::slides::run(
-        &slide_dir, &out, &slides, &loaded_style, cfg,
-        concurrency, image_size, gen_model, ref_image_size, vision_model, refine, batch,
+        &slide_dir,
+        &out,
+        &slides,
+        &loaded_style,
+        cfg,
+        concurrency,
+        image_size,
+        gen_model,
+        ref_image_size,
+        vision_model,
+        refine,
+        batch,
     )?;
 
     Ok(format!("Generated PPTX: {}", out.display()))
@@ -471,15 +515,24 @@ fn plugin_cards(
     mofa_root: &std::path::Path,
     cfg: &config::MofaConfig,
 ) -> Result<String> {
-    let style_name = args.get("style").and_then(|v| v.as_str()).unwrap_or("cny-guochao");
-    let card_dir = args.get("card_dir").and_then(|v| v.as_str())
+    let style_name = args
+        .get("style")
+        .and_then(|v| v.as_str())
+        .unwrap_or("cny-guochao");
+    let card_dir = args
+        .get("card_dir")
+        .and_then(|v| v.as_str())
         .map(|s| relocate_path(std::path::Path::new(s)))
         .ok_or_else(|| eyre::eyre!("missing 'card_dir'"))?;
     let aspect = args.get("aspect").and_then(|v| v.as_str());
-    let concurrency = args.get("concurrency").and_then(|v| v.as_u64()).unwrap_or(5) as usize;
+    let concurrency = args
+        .get("concurrency")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(5) as usize;
     let image_size = args.get("image_size").and_then(|v| v.as_str());
 
-    let cards_json = args.get("cards")
+    let cards_json = args
+        .get("cards")
         .ok_or_else(|| eyre::eyre!("missing 'cards' array"))?;
     let cards: Vec<pipeline::cards::CardInput> = serde_json::from_value(cards_json.clone())?;
 
@@ -491,11 +544,22 @@ fn plugin_cards(
 
     let batch = args.get("api").and_then(|v| v.as_str()).unwrap_or("rt") == "batch";
     pipeline::cards::run(
-        &card_dir, &cards, &loaded_style, cfg,
-        concurrency, aspect, image_size, None, batch,
+        &card_dir,
+        &cards,
+        &loaded_style,
+        cfg,
+        concurrency,
+        aspect,
+        image_size,
+        None,
+        batch,
     )?;
 
-    Ok(format!("Generated {} card(s) in {}", cards.len(), card_dir.display()))
+    Ok(format!(
+        "Generated {} card(s) in {}",
+        cards.len(),
+        card_dir.display()
+    ))
 }
 
 fn plugin_comic(
@@ -504,19 +568,37 @@ fn plugin_comic(
     cfg: &config::MofaConfig,
 ) -> Result<String> {
     let style_name = args.get("style").and_then(|v| v.as_str()).unwrap_or("xkcd");
-    let out_str = args.get("out").and_then(|v| v.as_str())
+    let out_str = args
+        .get("out")
+        .and_then(|v| v.as_str())
         .ok_or_else(|| eyre::eyre!("missing 'out' (output PNG path)"))?;
     let out = relocate_path(std::path::Path::new(out_str));
-    let work_dir = args.get("work_dir").and_then(|v| v.as_str())
+    let work_dir = args
+        .get("work_dir")
+        .and_then(|v| v.as_str())
         .map(|s| relocate_path(std::path::Path::new(s)))
-        .unwrap_or_else(|| out.parent().unwrap_or(std::path::Path::new(".")).to_path_buf());
-    let layout = args.get("layout").and_then(|v| v.as_str()).unwrap_or("horizontal");
-    let concurrency = args.get("concurrency").and_then(|v| v.as_u64()).unwrap_or(3) as usize;
+        .unwrap_or_else(|| {
+            out.parent()
+                .unwrap_or(std::path::Path::new("."))
+                .to_path_buf()
+        });
+    let layout = args
+        .get("layout")
+        .and_then(|v| v.as_str())
+        .unwrap_or("horizontal");
+    let concurrency = args
+        .get("concurrency")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(3) as usize;
     let image_size = args.get("image_size").and_then(|v| v.as_str());
-    let refine = args.get("refine").and_then(|v| v.as_bool()).unwrap_or(false);
+    let refine = args
+        .get("refine")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
     let gutter = args.get("gutter").and_then(|v| v.as_u64()).unwrap_or(20) as u32;
 
-    let panels_json = args.get("panels")
+    let panels_json = args
+        .get("panels")
         .ok_or_else(|| eyre::eyre!("missing 'panels' array"))?;
     let panels: Vec<pipeline::comic::PanelInput> = serde_json::from_value(panels_json.clone())?;
 
@@ -528,8 +610,18 @@ fn plugin_comic(
 
     let batch = args.get("api").and_then(|v| v.as_str()).unwrap_or("rt") == "batch";
     pipeline::comic::run(
-        &work_dir, &out, &panels, &loaded_style, cfg,
-        layout, concurrency, image_size, refine, gutter, None, batch,
+        &work_dir,
+        &out,
+        &panels,
+        &loaded_style,
+        cfg,
+        layout,
+        concurrency,
+        image_size,
+        refine,
+        gutter,
+        None,
+        batch,
     )?;
 
     Ok(format!("Generated comic: {}", out.display()))
@@ -540,22 +632,41 @@ fn plugin_infographic(
     mofa_root: &std::path::Path,
     cfg: &config::MofaConfig,
 ) -> Result<String> {
-    let style_name = args.get("style").and_then(|v| v.as_str()).unwrap_or("cyberpunk-neon");
-    let out_str = args.get("out").and_then(|v| v.as_str())
+    let style_name = args
+        .get("style")
+        .and_then(|v| v.as_str())
+        .unwrap_or("cyberpunk-neon");
+    let out_str = args
+        .get("out")
+        .and_then(|v| v.as_str())
         .ok_or_else(|| eyre::eyre!("missing 'out' (output PNG path)"))?;
     let out = relocate_path(std::path::Path::new(out_str));
-    let work_dir = args.get("work_dir").and_then(|v| v.as_str())
+    let work_dir = args
+        .get("work_dir")
+        .and_then(|v| v.as_str())
         .map(|s| relocate_path(std::path::Path::new(s)))
-        .unwrap_or_else(|| out.parent().unwrap_or(std::path::Path::new(".")).to_path_buf());
-    let concurrency = args.get("concurrency").and_then(|v| v.as_u64()).unwrap_or(3) as usize;
+        .unwrap_or_else(|| {
+            out.parent()
+                .unwrap_or(std::path::Path::new("."))
+                .to_path_buf()
+        });
+    let concurrency = args
+        .get("concurrency")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(3) as usize;
     let image_size = args.get("image_size").and_then(|v| v.as_str());
     let aspect = args.get("aspect").and_then(|v| v.as_str());
-    let refine = args.get("refine").and_then(|v| v.as_bool()).unwrap_or(false);
+    let refine = args
+        .get("refine")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
     let gutter = args.get("gutter").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
 
-    let sections_json = args.get("sections")
+    let sections_json = args
+        .get("sections")
         .ok_or_else(|| eyre::eyre!("missing 'sections' array"))?;
-    let sections: Vec<pipeline::infographic::SectionInput> = serde_json::from_value(sections_json.clone())?;
+    let sections: Vec<pipeline::infographic::SectionInput> =
+        serde_json::from_value(sections_json.clone())?;
 
     let styles_dir = find_styles_dir(mofa_root, "infographic");
     let style_file = styles_dir.join(format!("{style_name}.toml"));
@@ -565,8 +676,18 @@ fn plugin_infographic(
 
     let batch = args.get("api").and_then(|v| v.as_str()).unwrap_or("rt") == "batch";
     pipeline::infographic::run(
-        &work_dir, &out, &sections, &loaded_style, cfg,
-        concurrency, image_size, aspect, refine, gutter, None, batch,
+        &work_dir,
+        &out,
+        &sections,
+        &loaded_style,
+        cfg,
+        concurrency,
+        image_size,
+        aspect,
+        refine,
+        gutter,
+        None,
+        batch,
     )?;
 
     Ok(format!("Generated infographic: {}", out.display()))
@@ -577,22 +698,55 @@ fn plugin_video(
     mofa_root: &std::path::Path,
     cfg: &config::MofaConfig,
 ) -> Result<String> {
-    let style_name = args.get("style").and_then(|v| v.as_str()).unwrap_or("video-card");
-    let anim_style_name = args.get("anim_style").and_then(|v| v.as_str()).unwrap_or("shuimo");
-    let card_dir = args.get("card_dir").and_then(|v| v.as_str())
+    let style_name = args
+        .get("style")
+        .and_then(|v| v.as_str())
+        .unwrap_or("video-card");
+    let anim_style_name = args
+        .get("anim_style")
+        .and_then(|v| v.as_str())
+        .unwrap_or("shuimo");
+    let card_dir = args
+        .get("card_dir")
+        .and_then(|v| v.as_str())
         .map(|s| relocate_path(std::path::Path::new(s)))
         .ok_or_else(|| eyre::eyre!("missing 'card_dir'"))?;
-    let bgm = args.get("bgm").and_then(|v| v.as_str()).map(|s| relocate_path(std::path::Path::new(s)));
-    let aspect = args.get("aspect").and_then(|v| v.as_str()).unwrap_or("9:16");
+    let bgm = args
+        .get("bgm")
+        .and_then(|v| v.as_str())
+        .map(|s| relocate_path(std::path::Path::new(s)));
+    let aspect = args
+        .get("aspect")
+        .and_then(|v| v.as_str())
+        .unwrap_or("9:16");
     let image_size = args.get("image_size").and_then(|v| v.as_str());
-    let concurrency = args.get("concurrency").and_then(|v| v.as_u64()).unwrap_or(3) as usize;
-    let still_duration = args.get("still_duration").and_then(|v| v.as_f64()).unwrap_or(2.0);
-    let crossfade_dur = args.get("crossfade_dur").and_then(|v| v.as_f64()).unwrap_or(1.0);
-    let fade_out_dur = args.get("fade_out_dur").and_then(|v| v.as_f64()).unwrap_or(1.5);
-    let music_volume = args.get("music_volume").and_then(|v| v.as_f64()).unwrap_or(0.3);
-    let music_fade_in = args.get("music_fade_in").and_then(|v| v.as_f64()).unwrap_or(2.0);
+    let concurrency = args
+        .get("concurrency")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(3) as usize;
+    let still_duration = args
+        .get("still_duration")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(2.0);
+    let crossfade_dur = args
+        .get("crossfade_dur")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(1.0);
+    let fade_out_dur = args
+        .get("fade_out_dur")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(1.5);
+    let music_volume = args
+        .get("music_volume")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(0.3);
+    let music_fade_in = args
+        .get("music_fade_in")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(2.0);
 
-    let cards_json = args.get("cards")
+    let cards_json = args
+        .get("cards")
         .ok_or_else(|| eyre::eyre!("missing 'cards' array"))?;
     let cards: Vec<pipeline::video::VideoCardInput> = serde_json::from_value(cards_json.clone())?;
 
@@ -610,12 +764,28 @@ fn plugin_video(
 
     let batch = args.get("api").and_then(|v| v.as_str()).unwrap_or("rt") == "batch";
     pipeline::video::run(
-        &card_dir, &cards, &img_style, &anim_style, cfg,
-        concurrency, Some(aspect), image_size, bgm.as_deref(), still_duration,
-        crossfade_dur, fade_out_dur, music_volume, music_fade_in, batch,
+        &card_dir,
+        &cards,
+        &img_style,
+        &anim_style,
+        cfg,
+        concurrency,
+        Some(aspect),
+        image_size,
+        bgm.as_deref(),
+        still_duration,
+        crossfade_dur,
+        fade_out_dur,
+        music_volume,
+        music_fade_in,
+        batch,
     )?;
 
-    Ok(format!("Generated {} video card(s) in {}", cards.len(), card_dir.display()))
+    Ok(format!(
+        "Generated {} video card(s) in {}",
+        cards.len(),
+        card_dir.display()
+    ))
 }
 
 fn main() -> Result<()> {
@@ -721,7 +891,9 @@ fn main() -> Result<()> {
             let loaded_style = style::load_style(&style_file)?;
 
             let out_dir = work_dir.unwrap_or_else(|| {
-                out.parent().unwrap_or(std::path::Path::new(".")).to_path_buf()
+                out.parent()
+                    .unwrap_or(std::path::Path::new("."))
+                    .to_path_buf()
             });
 
             let json = read_input(input.as_ref())?;
@@ -759,12 +931,13 @@ fn main() -> Result<()> {
             let loaded_style = style::load_style(&style_file)?;
 
             let out_dir = work_dir.unwrap_or_else(|| {
-                out.parent().unwrap_or(std::path::Path::new(".")).to_path_buf()
+                out.parent()
+                    .unwrap_or(std::path::Path::new("."))
+                    .to_path_buf()
             });
 
             let json = read_input(input.as_ref())?;
-            let sections: Vec<pipeline::infographic::SectionInput> =
-                serde_json::from_str(&json)?;
+            let sections: Vec<pipeline::infographic::SectionInput> = serde_json::from_str(&json)?;
 
             pipeline::infographic::run(
                 &out_dir,
@@ -847,7 +1020,10 @@ fn main() -> Result<()> {
                     let mut buf = Vec::new();
                     entry.read_to_end(&mut buf)?;
                     // Pretty-print XML files for readability
-                    if out_path.extension().is_some_and(|e| e == "xml" || e == "rels") {
+                    if out_path
+                        .extension()
+                        .is_some_and(|e| e == "xml" || e == "rels")
+                    {
                         if let Ok(text) = String::from_utf8(buf.clone()) {
                             if let Ok(formatted) = pretty_print_xml(&text) {
                                 std::fs::write(&out_path, formatted)?;
@@ -871,7 +1047,10 @@ fn main() -> Result<()> {
             let options = zip::write::SimpleFileOptions::default()
                 .compression_method(zip::CompressionMethod::Deflated);
             let mut count = 0u32;
-            for entry in walkdir::WalkDir::new(&input_dir).into_iter().filter_map(|e| e.ok()) {
+            for entry in walkdir::WalkDir::new(&input_dir)
+                .into_iter()
+                .filter_map(|e| e.ok())
+            {
                 let path = entry.path();
                 if !path.is_file() {
                     continue;
@@ -981,7 +1160,14 @@ fn condense_xml(xml: &str) -> Result<String> {
                 result.push(ch);
                 prev_was_gt = true;
                 // Check if we just entered a text-preserving element
-                let last_tag: String = result.chars().rev().take_while(|&c| c != '<').collect::<String>().chars().rev().collect();
+                let last_tag: String = result
+                    .chars()
+                    .rev()
+                    .take_while(|&c| c != '<')
+                    .collect::<String>()
+                    .chars()
+                    .rev()
+                    .collect();
                 if last_tag.contains(":t>") || last_tag.contains(":t ") {
                     in_preserve = !last_tag.starts_with('/');
                 }

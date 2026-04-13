@@ -13,32 +13,54 @@ const DEFAULT_EDIT_MODEL: &str = "qwen-image-edit-max";
 #[allow(dead_code)]
 pub struct OcrWord {
     pub text: String,
-    pub x1: f64, pub y1: f64,
-    pub x2: f64, pub y2: f64,
-    pub x3: f64, pub y3: f64,
-    pub x4: f64, pub y4: f64,
+    pub x1: f64,
+    pub y1: f64,
+    pub x2: f64,
+    pub y2: f64,
+    pub x3: f64,
+    pub y3: f64,
+    pub x4: f64,
+    pub y4: f64,
 }
 
 #[allow(dead_code)]
 impl OcrWord {
     /// Bounding box left edge (min x).
-    pub fn left(&self) -> f64 { self.x1.min(self.x4) }
+    pub fn left(&self) -> f64 {
+        self.x1.min(self.x4)
+    }
     /// Bounding box top edge (min y).
-    pub fn top(&self) -> f64 { self.y1.min(self.y2) }
+    pub fn top(&self) -> f64 {
+        self.y1.min(self.y2)
+    }
     /// Bounding box width.
-    pub fn width(&self) -> f64 { self.x2.max(self.x3) - self.left() }
+    pub fn width(&self) -> f64 {
+        self.x2.max(self.x3) - self.left()
+    }
     /// Bounding box height.
-    pub fn height(&self) -> f64 { self.y3.max(self.y4) - self.top() }
+    pub fn height(&self) -> f64 {
+        self.y3.max(self.y4) - self.top()
+    }
     /// Estimated font size in points (height_px / 1.333).
-    pub fn font_size_pt(&self) -> f64 { self.height() / 1.333 }
+    pub fn font_size_pt(&self) -> f64 {
+        self.height() / 1.333
+    }
     /// Bounding box right edge (max x).
-    pub fn right(&self) -> f64 { self.x2.max(self.x3) }
+    pub fn right(&self) -> f64 {
+        self.x2.max(self.x3)
+    }
     /// Bounding box bottom edge (max y).
-    pub fn bottom(&self) -> f64 { self.y3.max(self.y4) }
+    pub fn bottom(&self) -> f64 {
+        self.y3.max(self.y4)
+    }
     /// Vertical center of the bounding box.
-    pub fn center_y(&self) -> f64 { (self.top() + self.bottom()) / 2.0 }
+    pub fn center_y(&self) -> f64 {
+        (self.top() + self.bottom()) / 2.0
+    }
     /// Horizontal center of the bounding box.
-    pub fn center_x(&self) -> f64 { (self.left() + self.right()) / 2.0 }
+    pub fn center_x(&self) -> f64 {
+        (self.left() + self.right()) / 2.0
+    }
 }
 
 /// Sample the background color around a bounding box by looking at border pixels.
@@ -46,7 +68,10 @@ impl OcrWord {
 #[allow(dead_code)]
 fn sample_border_color(
     img: &image::RgbImage,
-    x0: u32, y0: u32, x1: u32, y1: u32,
+    x0: u32,
+    y0: u32,
+    x1: u32,
+    y1: u32,
 ) -> image::Rgb<u8> {
     let (iw, ih) = (img.width(), img.height());
     let mut samples: Vec<[u8; 3]> = Vec::new();
@@ -224,23 +249,20 @@ impl DashscopeClient {
 
             // Upscale back to original resolution if we downscaled
             if orig_w > 2048 {
-                eprintln!(
-                    "  Dashscope: upscaling back to {}x{}",
-                    orig_w, orig_h
-                );
+                eprintln!("  Dashscope: upscaling back to {}x{}", orig_w, orig_h);
                 let result_img = image::ImageReader::open(&path)?
                     .with_guessed_format()?
                     .decode()?;
-                let upscaled = result_img.resize_exact(
-                    orig_w, orig_h,
-                    image::imageops::FilterType::Lanczos3,
-                );
+                let upscaled =
+                    result_img.resize_exact(orig_w, orig_h, image::imageops::FilterType::Lanczos3);
                 upscaled.save(&path)?;
             }
 
             return Ok(path);
         }
-        Err(eyre::eyre!("Dashscope rate limited after {max_retries} retries"))
+        Err(eyre::eyre!(
+            "Dashscope rate limited after {max_retries} retries"
+        ))
     }
 
     /// OCR an image using qwen-vl-ocr, returning word-level bounding boxes.
@@ -300,7 +322,9 @@ impl DashscopeClient {
             let data: Value = resp.json()?;
 
             if let Some(code) = data.get("code").and_then(|c| c.as_str()) {
-                if (code.contains("RateQuota") || code.contains("Throttling")) && attempt < max_retries {
+                if (code.contains("RateQuota") || code.contains("Throttling"))
+                    && attempt < max_retries
+                {
                     let wait = 10 * (attempt + 1) as u64;
                     eprintln!("  OCR: rate limited, retrying in {wait}s...");
                     std::thread::sleep(std::time::Duration::from_secs(wait));
@@ -312,24 +336,39 @@ impl DashscopeClient {
             let mut words = Vec::new();
             if let Some(choices) = data.pointer("/output/choices").and_then(|c| c.as_array()) {
                 for choice in choices {
-                    if let Some(content) = choice.pointer("/message/content").and_then(|c| c.as_array()) {
+                    if let Some(content) = choice
+                        .pointer("/message/content")
+                        .and_then(|c| c.as_array())
+                    {
                         for item in content {
                             if let Some(ocr) = item.get("ocr_result") {
-                                if let Some(infos) = ocr.get("words_info").and_then(|w| w.as_array()) {
+                                if let Some(infos) =
+                                    ocr.get("words_info").and_then(|w| w.as_array())
+                                {
                                     for info in infos {
-                                        let text = info.get("text").and_then(|t| t.as_str()).unwrap_or("").to_string();
+                                        let text = info
+                                            .get("text")
+                                            .and_then(|t| t.as_str())
+                                            .unwrap_or("")
+                                            .to_string();
                                         let loc: Vec<f64> = info
                                             .get("location")
                                             .and_then(|l| l.as_array())
-                                            .map(|arr| arr.iter().filter_map(|v| v.as_f64()).collect())
+                                            .map(|arr| {
+                                                arr.iter().filter_map(|v| v.as_f64()).collect()
+                                            })
                                             .unwrap_or_default();
                                         if loc.len() == 8 && !text.is_empty() {
                                             words.push(OcrWord {
                                                 text,
-                                                x1: loc[0], y1: loc[1],
-                                                x2: loc[2], y2: loc[3],
-                                                x3: loc[4], y3: loc[5],
-                                                x4: loc[6], y4: loc[7],
+                                                x1: loc[0],
+                                                y1: loc[1],
+                                                x2: loc[2],
+                                                y2: loc[3],
+                                                x3: loc[4],
+                                                y3: loc[5],
+                                                x4: loc[6],
+                                                y4: loc[7],
                                             });
                                         }
                                     }
@@ -359,7 +398,10 @@ impl DashscopeClient {
             std::fs::copy(image_path, out_file)?;
             return Ok(out_file.to_path_buf());
         }
-        eprintln!("  remove_text: OCR found {} text regions, filling with background...", words.len());
+        eprintln!(
+            "  remove_text: OCR found {} text regions, filling with background...",
+            words.len()
+        );
 
         // Step 2: Load image
         let mut img = image::ImageReader::open(image_path)?
@@ -410,7 +452,7 @@ impl DashscopeClient {
 
         // Determine size string (width*height) from mofa size notation
         let size_str = match size {
-            Some("4K") => "2048*1152",  // 16:9 max for qwen
+            Some("4K") => "2048*1152", // 16:9 max for qwen
             Some("2K") => "1344*768",
             Some("1K") => "1024*576",
             _ => "1344*768",
@@ -468,7 +510,9 @@ impl DashscopeClient {
 
             return self.download_result(img_url, out_file);
         }
-        Err(eyre::eyre!("Dashscope gen rate limited after {max_retries} retries"))
+        Err(eyre::eyre!(
+            "Dashscope gen rate limited after {max_retries} retries"
+        ))
     }
 
     fn download_result(&self, img_url: &str, out_file: &Path) -> Result<std::path::PathBuf> {

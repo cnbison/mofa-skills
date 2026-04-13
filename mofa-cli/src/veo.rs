@@ -83,15 +83,16 @@ impl VeoClient {
 
         eprintln!("Veo: generating video...");
         for i in 0..MAX_POLLS {
-            if operation.get("done").and_then(|d| d.as_bool()).unwrap_or(false) {
+            if operation
+                .get("done")
+                .and_then(|d| d.as_bool())
+                .unwrap_or(false)
+            {
                 break;
             }
             std::thread::sleep(std::time::Duration::from_secs(POLL_INTERVAL_SECS));
 
-            let poll_url = format!(
-                "{}/{}?key={}",
-                self.base_url, op_name, self.api_key
-            );
+            let poll_url = format!("{}/{}?key={}", self.base_url, op_name, self.api_key);
             let poll_resp = self.http.get(&poll_url).send()?;
             operation = poll_resp.json()?;
 
@@ -122,10 +123,7 @@ impl VeoClient {
             std::fs::create_dir_all(parent).ok();
         }
         std::fs::write(out_file, &bytes)?;
-        eprintln!(
-            "Veo: video saved ({}MB)",
-            bytes.len() / 1024 / 1024
-        );
+        eprintln!("Veo: video saved ({}MB)", bytes.len() / 1024 / 1024);
         Ok(out_file.to_path_buf())
     }
 }

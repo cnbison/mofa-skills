@@ -1,0 +1,11 @@
+{
+  email admin@example.com
+}
+
+# Give the studio its own subdomain so the backend can own / and /sites/<slug>/.
+studio.crew.ominix.io {
+  reverse_proxy 127.0.0.1:4310
+}
+
+# If `crew.ominix.io/sites/*` is already a static file_server, do not proxy the studio there.
+# The backend preview routes use /sites/<slug>/ and will collide with the existing static handler.

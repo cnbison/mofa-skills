@@ -65,6 +65,28 @@ Terminal helper for the same launch grammar:
 bash mofa-site/scripts/new_site_session.sh "/new site nextjs" --format prompt
 ```
 
+## Design Principles
+
+`mofa-site` is static-first by default.
+
+- The generated website should build to static assets (`docs/`, `dist/`, or `out/`) and be deployable on GitHub Pages, Caddy static hosting, or `mofa-publish` without a long-running per-site app server.
+- The studio/backend may be stateful, but the site artifact should remain static unless the user explicitly asks for a server-dependent app.
+- If a generated site needs dynamic behavior, prefer a shared multitenant backend API keyed by hostname, profile, or signed auth context.
+- Do not default to one Node/Rust server per profile or per site session. Dedicated per-site runtimes are an advanced exception, not the baseline.
+- Templates must be preview-safe under session-scoped subpaths and must not assume root deployment.
+
+Default architecture:
+
+```text
+static site frontend + shared multitenant API + mofa-publish
+```
+
+Not the default architecture:
+
+```text
+one long-running Node/SSR server per sub account or per generated site
+```
+
 ## Output Paths
 
 ```
@@ -236,8 +258,16 @@ Open the studio in a browser to:
 - launch with a site-type command before the full editor opens
 - let the backend scaffold a real site skeleton as soon as the session starts
 - chat in the left panel to switch template, rename the site, or add/remove page briefs
-- inspect the live iframe preview in the middle panel under `/sites/<site-slug>/`
+- inspect the live iframe preview in the middle panel through a session-scoped preview URL
 - inspect the generated site tree and file contents in the right panel
+
+Preview route shape:
+
+```text
+/api/preview/<profile-id>/<session-id>/<site-slug>/index.html
+```
+
+For a real shareable site URL, publish the built output through `mofa-publish`. The studio preview route is a session-scoped build preview, not the final production URL.
 
 The current chat parser supports structured commands such as:
 

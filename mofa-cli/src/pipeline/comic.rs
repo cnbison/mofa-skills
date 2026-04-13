@@ -30,8 +30,7 @@ fn gen_panels_sync(
     image_size: Option<&str>,
     concurrency: usize,
 ) -> Vec<Option<PathBuf>> {
-    let panel_paths: Arc<Mutex<Vec<Option<PathBuf>>>> =
-        Arc::new(Mutex::new(vec![None; total]));
+    let panel_paths: Arc<Mutex<Vec<Option<PathBuf>>>> = Arc::new(Mutex::new(vec![None; total]));
 
     let pool = rayon::ThreadPoolBuilder::new()
         .num_threads(concurrency)
@@ -120,7 +119,11 @@ pub fn run(
                 let padded = format!("{:02}", idx + 1);
                 BatchImageRequest {
                     key: format!("panel-{padded}"),
-                    prompt: format!("{prefix}\n\nPanel {} of {total}:\n{}", idx + 1, panel.prompt),
+                    prompt: format!(
+                        "{prefix}\n\nPanel {} of {total}:\n{}",
+                        idx + 1,
+                        panel.prompt
+                    ),
                     out_file: out_dir.join(format!("panel-{padded}.png")),
                     image_size: image_size.map(String::from),
                     aspect_ratio: Some(panel_aspect.to_string()),
@@ -133,11 +136,31 @@ pub fn run(
             Ok(results) => results,
             Err(e) => {
                 eprintln!("Batch failed ({e}), falling back to parallel sync...");
-                gen_panels_sync(&gemini, out_dir, panels, style, total, model, panel_aspect, image_size, concurrency)
+                gen_panels_sync(
+                    &gemini,
+                    out_dir,
+                    panels,
+                    style,
+                    total,
+                    model,
+                    panel_aspect,
+                    image_size,
+                    concurrency,
+                )
             }
         }
     } else {
-        gen_panels_sync(&gemini, out_dir, panels, style, total, model, panel_aspect, image_size, concurrency)
+        gen_panels_sync(
+            &gemini,
+            out_dir,
+            panels,
+            style,
+            total,
+            model,
+            panel_aspect,
+            image_size,
+            concurrency,
+        )
     };
 
     // Phase 2: Optional Qwen-Edit refinement (sequential)

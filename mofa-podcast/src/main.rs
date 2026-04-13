@@ -21,18 +21,95 @@ const PRESET_VOICES: &[&str] = &[
 
 // ── Emotion → TTS prompt mapping ───────────────────────────────────
 
-fn emotion_to_prompt(emotion: &str) -> Option<&'static str> {
-    match emotion.trim().to_lowercase().as_str() {
-        "calm" => None, // natural tone, no override
-        "excited" => Some("用兴奋激动的语气说话，充满热情和活力"),
-        "serious" => Some("用严肃认真的语气说话，语调沉稳"),
-        "warm" => Some("用温暖亲切的语气说话，声音柔和"),
-        "angry" => Some("用愤怒的语气说话，语气强烈"),
-        "sad" => Some("用悲伤低沉的语气说话，语调缓慢"),
-        "cheerful" => Some("用开朗愉快的语气说话，充满笑意"),
-        "dramatic" => Some("用戏剧化的语气说话，声音富有张力"),
-        "curious" => Some("用好奇探询的语气说话，语调上扬"),
-        "thoughtful" => Some("用沉思的语气缓缓说话，语调平稳而深沉"),
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TtsLanguage {
+    Chinese,
+    English,
+}
+
+impl TtsLanguage {
+    fn api_value(self) -> &'static str {
+        match self {
+            Self::Chinese => "chinese",
+            Self::English => "english",
+        }
+    }
+}
+
+fn is_cjk(ch: char) -> bool {
+    matches!(
+        ch as u32,
+        0x3400..=0x4DBF
+            | 0x4E00..=0x9FFF
+            | 0xF900..=0xFAFF
+            | 0x20000..=0x2A6DF
+            | 0x2A700..=0x2B73F
+            | 0x2B740..=0x2B81F
+            | 0x2B820..=0x2CEAF
+            | 0x2CEB0..=0x2EBEF
+    )
+}
+
+fn infer_tts_language(text: &str) -> Option<TtsLanguage> {
+    let mut cjk_count = 0usize;
+    let mut latin_count = 0usize;
+
+    for ch in text.chars() {
+        if ch.is_ascii_alphabetic() {
+            latin_count += 1;
+        } else if is_cjk(ch) {
+            cjk_count += 1;
+        }
+    }
+
+    if cjk_count == 0 && latin_count == 0 {
+        None
+    } else if cjk_count >= latin_count {
+        Some(TtsLanguage::Chinese)
+    } else {
+        Some(TtsLanguage::English)
+    }
+}
+
+fn emotion_to_prompt(emotion: &str, language: Option<TtsLanguage>) -> Option<&'static str> {
+    match (language, emotion.trim().to_lowercase().as_str()) {
+        (_, "calm") => None,
+        (Some(TtsLanguage::Chinese), "excited") => Some("用兴奋激动的语气说话，充满热情和活力"),
+        (Some(TtsLanguage::Chinese), "serious") => Some("用严肃认真的语气说话，语调沉稳"),
+        (Some(TtsLanguage::Chinese), "warm") => Some("用温暖亲切的语气说话，声音柔和"),
+        (Some(TtsLanguage::Chinese), "angry") => Some("用愤怒的语气说话，语气强烈"),
+        (Some(TtsLanguage::Chinese), "sad") => Some("用悲伤低沉的语气说话，语调缓慢"),
+        (Some(TtsLanguage::Chinese), "cheerful") => Some("用开朗愉快的语气说话，充满笑意"),
+        (Some(TtsLanguage::Chinese), "dramatic") => Some("用戏剧化的语气说话，声音富有张力"),
+        (Some(TtsLanguage::Chinese), "curious") => Some("用好奇探询的语气说话，语调上扬"),
+        (Some(TtsLanguage::Chinese), "thoughtful") => Some("用沉思的语气缓缓说话，语调平稳而深沉"),
+        (Some(TtsLanguage::English), "excited") => {
+            Some("Speak in an excited, energetic tone with strong enthusiasm.")
+        }
+        (Some(TtsLanguage::English), "serious") => {
+            Some("Speak in a serious, composed tone with measured delivery.")
+        }
+        (Some(TtsLanguage::English), "warm") => {
+            Some("Speak in a warm, friendly tone with gentle softness.")
+        }
+        (Some(TtsLanguage::English), "angry") => {
+            Some("Speak in an angry, forceful tone with strong intensity.")
+        }
+        (Some(TtsLanguage::English), "sad") => {
+            Some("Speak in a sad, low, reflective tone with slower pacing.")
+        }
+        (Some(TtsLanguage::English), "cheerful") => {
+            Some("Speak in a cheerful, upbeat tone with a smile in the voice.")
+        }
+        (Some(TtsLanguage::English), "dramatic") => {
+            Some("Speak in a dramatic, theatrical tone with strong tension.")
+        }
+        (Some(TtsLanguage::English), "curious") => {
+            Some("Speak in a curious, inquisitive tone with light upward inflection.")
+        }
+        (Some(TtsLanguage::English), "thoughtful") => {
+            Some("Speak in a thoughtful, contemplative tone with steady pacing.")
+        }
         _ => None,
     }
 }
@@ -102,6 +179,37 @@ fn resolve_output_dir(output_dir: Option<String>) -> PathBuf {
     }
 }
 
+fn sanitize_filename_component(raw: &str) -> String {
+    let mut out = String::with_capacity(raw.len());
+    let mut last_was_underscore = false;
+
+    for ch in raw.chars() {
+        if ch.is_ascii_alphanumeric() || ch == '_' || ch == '-' {
+            out.push(ch);
+            last_was_underscore = false;
+        } else if !last_was_underscore {
+            out.push('_');
+            last_was_underscore = true;
+        }
+    }
+
+    let out = out.trim_matches('_').to_string();
+    if out.is_empty() {
+        "voice".to_string()
+    } else {
+        out
+    }
+}
+
+fn segment_file_path(seg_dir: &Path, voice: &str, seg_id: u32) -> PathBuf {
+    let safe_voice = sanitize_filename_component(voice);
+    seg_dir.join(format!("seg_{seg_id:03}_{safe_voice}.wav"))
+}
+
+fn placeholder_file_path(seg_dir: &Path, prefix: &str, line_index: usize) -> PathBuf {
+    seg_dir.join(format!("{prefix}_{line_index:03}.wav"))
+}
+
 fn load_registry() -> VoiceRegistry {
     let path = data_dir().join("voices.json");
     match std::fs::read_to_string(&path) {
@@ -120,7 +228,11 @@ fn resolve_custom_voice(name: &str) -> Option<PathBuf> {
     }
     let dir = data_dir().join("voice_profiles");
     let wav = dir.join(format!("{name}.wav"));
-    if wav.exists() { Some(wav) } else { None }
+    if wav.exists() {
+        Some(wav)
+    } else {
+        None
+    }
 }
 
 // ── HTTP / ominix-api ──────────────────────────────────────────────
@@ -154,6 +266,77 @@ fn http_client() -> reqwest::blocking::Client {
 }
 
 // ── Audio helpers ──────────────────────────────────────────────────
+
+struct WavMetadata<'a> {
+    audio_format: u16,
+    channels: u16,
+    sample_rate: u32,
+    bits_per_sample: u16,
+    data: &'a [u8],
+}
+
+fn parse_wav_metadata(bytes: &[u8]) -> Result<WavMetadata<'_>, String> {
+    if bytes.len() < 12 || &bytes[..4] != b"RIFF" || &bytes[8..12] != b"WAVE" {
+        return Err("not a RIFF/WAVE file".to_string());
+    }
+
+    let mut offset = 12usize;
+    let mut fmt: Option<(u16, u16, u32, u16)> = None;
+    let mut data: Option<&[u8]> = None;
+
+    while offset + 8 <= bytes.len() {
+        let chunk_id = &bytes[offset..offset + 4];
+        let chunk_size = u32::from_le_bytes([
+            bytes[offset + 4],
+            bytes[offset + 5],
+            bytes[offset + 6],
+            bytes[offset + 7],
+        ]) as usize;
+        let chunk_start = offset + 8;
+        let chunk_end = chunk_start
+            .checked_add(chunk_size)
+            .ok_or_else(|| "invalid WAV chunk size".to_string())?;
+        if chunk_end > bytes.len() {
+            return Err("truncated WAV chunk".to_string());
+        }
+
+        match chunk_id {
+            b"fmt " => {
+                if chunk_size < 16 {
+                    return Err("WAV fmt chunk too short".to_string());
+                }
+                fmt = Some((
+                    u16::from_le_bytes([bytes[chunk_start], bytes[chunk_start + 1]]),
+                    u16::from_le_bytes([bytes[chunk_start + 2], bytes[chunk_start + 3]]),
+                    u32::from_le_bytes([
+                        bytes[chunk_start + 4],
+                        bytes[chunk_start + 5],
+                        bytes[chunk_start + 6],
+                        bytes[chunk_start + 7],
+                    ]),
+                    u16::from_le_bytes([bytes[chunk_start + 14], bytes[chunk_start + 15]]),
+                ));
+            }
+            b"data" => {
+                data = Some(&bytes[chunk_start..chunk_end]);
+            }
+            _ => {}
+        }
+
+        offset = chunk_end + (chunk_size % 2);
+    }
+
+    let (audio_format, channels, sample_rate, bits_per_sample) =
+        fmt.ok_or_else(|| "WAV fmt chunk missing".to_string())?;
+    let data = data.ok_or_else(|| "WAV data chunk missing".to_string())?;
+    Ok(WavMetadata {
+        audio_format,
+        channels,
+        sample_rate,
+        bits_per_sample,
+        data,
+    })
+}
 
 fn pcm_to_wav(pcm: &[u8], sample_rate: u32) -> Vec<u8> {
     let channels: u16 = 1;
@@ -189,18 +372,42 @@ fn generate_silence_wav(duration_ms: u32) -> Vec<u8> {
 }
 
 fn audio_duration_ms(bytes: &[u8], sample_rate: u32) -> u32 {
-    let pcm_bytes = if bytes.len() >= 44 && &bytes[..4] == b"RIFF" && &bytes[8..12] == b"WAVE" {
-        bytes.len().saturating_sub(44)
-    } else {
-        bytes.len()
-    };
-    ((pcm_bytes / 2) as u32)
+    if let Ok(wav) = parse_wav_metadata(bytes) {
+        let bytes_per_frame =
+            usize::from(wav.channels).saturating_mul(usize::from(wav.bits_per_sample / 8));
+        if bytes_per_frame == 0 || wav.sample_rate == 0 {
+            return 0;
+        }
+        return ((wav.data.len() / bytes_per_frame) as u32)
+            .saturating_mul(1000)
+            .saturating_div(wav.sample_rate);
+    }
+
+    ((bytes.len() / 2) as u32)
         .saturating_mul(1000)
         .saturating_div(sample_rate)
 }
 
 fn has_meaningful_tts_audio(bytes: &[u8]) -> bool {
-    audio_duration_ms(bytes, 24_000) >= 150
+    if audio_duration_ms(bytes, 24_000) < 150 {
+        return false;
+    }
+
+    let pcm = parse_wav_metadata(bytes)
+        .map(|wav| wav.data)
+        .unwrap_or(bytes);
+
+    let mut non_silent_samples = 0usize;
+    for chunk in pcm.chunks_exact(2) {
+        let sample = i16::from_le_bytes([chunk[0], chunk[1]]);
+        if sample.unsigned_abs() >= 16 {
+            non_silent_samples += 1;
+            if non_silent_samples >= 32 {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 /// Resolve ffmpeg binary path — checks PATH first, then common install locations.
@@ -208,15 +415,21 @@ fn ffmpeg_bin() -> &'static str {
     static FFMPEG: std::sync::OnceLock<String> = std::sync::OnceLock::new();
     FFMPEG.get_or_init(|| {
         // Check PATH first
-        if Command::new("ffmpeg").arg("-version")
+        if Command::new("ffmpeg")
+            .arg("-version")
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
-            .status().is_ok()
+            .status()
+            .is_ok()
         {
             return "ffmpeg".to_string();
         }
         // Common install locations (macOS homebrew, linux)
-        for path in ["/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg", "/usr/bin/ffmpeg"] {
+        for path in [
+            "/opt/homebrew/bin/ffmpeg",
+            "/usr/local/bin/ffmpeg",
+            "/usr/bin/ffmpeg",
+        ] {
             if Path::new(path).exists() {
                 return path.to_string();
             }
@@ -225,19 +438,76 @@ fn ffmpeg_bin() -> &'static str {
     })
 }
 
-fn try_convert_to_mp3(wav_path: &str) -> String {
+struct FinalAudioOutput {
+    path: String,
+    format: &'static str,
+    warning: Option<String>,
+}
+
+fn finalize_audio_output(wav_path: &str) -> FinalAudioOutput {
     let mp3_path = wav_path.replace(".wav", ".mp3");
     let result = Command::new(ffmpeg_bin())
-        .args(["-y", "-i", wav_path, "-codec:a", "libmp3lame", "-b:a", "192k", "-q:a", "2", &mp3_path])
+        .args([
+            "-y",
+            "-i",
+            wav_path,
+            "-codec:a",
+            "libmp3lame",
+            "-b:a",
+            "192k",
+            "-q:a",
+            "2",
+            &mp3_path,
+        ])
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .status();
     match result {
         Ok(s) if s.success() => {
             let _ = std::fs::remove_file(wav_path);
-            mp3_path
+            FinalAudioOutput {
+                path: mp3_path,
+                format: "mp3",
+                warning: None,
+            }
         }
-        _ => wav_path.to_string(),
+        Ok(_) | Err(_) => {
+            let _ = std::fs::remove_file(&mp3_path);
+            FinalAudioOutput {
+                path: wav_path.to_string(),
+                format: "wav",
+                warning: Some(
+                    "ffmpeg conversion unavailable; returning WAV output instead of MP3"
+                        .to_string(),
+                ),
+            }
+        }
+    }
+}
+
+fn write_file_bytes(path: &Path, bytes: &[u8], label: &str) -> Result<(), String> {
+    std::fs::write(path, bytes)
+        .map_err(|e| format!("Failed to write {label} '{}': {e}", path.display()))
+}
+
+fn extract_pcm_for_concat<'a>(bytes: &'a [u8], path: &str) -> Result<&'a [u8], String> {
+    if bytes.len() >= 12 && &bytes[..4] == b"RIFF" && &bytes[8..12] == b"WAVE" {
+        let wav = parse_wav_metadata(bytes).map_err(|e| format!("Invalid WAV '{}': {e}", path))?;
+        if wav.audio_format != 1 {
+            return Err(format!(
+                "Unsupported WAV format in '{}': expected PCM but got format {}",
+                path, wav.audio_format
+            ));
+        }
+        if wav.channels != 1 || wav.bits_per_sample != 16 || wav.sample_rate != 24_000 {
+            return Err(format!(
+                "Unsupported WAV format in '{}': expected 24kHz mono 16-bit PCM, got {}Hz {}ch {}-bit",
+                path, wav.sample_rate, wav.channels, wav.bits_per_sample
+            ));
+        }
+        Ok(wav.data)
+    } else {
+        Ok(bytes)
     }
 }
 
@@ -257,17 +527,11 @@ fn concatenate_wavs(wav_paths: &[String], output_path: &str) -> Result<(), Strin
     // Fallback: raw PCM concatenation (all WAVs are 24kHz 16-bit mono)
     let mut all_pcm: Vec<u8> = Vec::new();
     for path in wav_paths {
-        let data = std::fs::read(path)
-            .map_err(|e| format!("Failed to read {path}: {e}"))?;
-        if data.len() > 44 && &data[..4] == b"RIFF" {
-            all_pcm.extend_from_slice(&data[44..]); // skip WAV header
-        } else {
-            all_pcm.extend_from_slice(&data); // raw PCM
-        }
+        let data = std::fs::read(path).map_err(|e| format!("Failed to read {path}: {e}"))?;
+        all_pcm.extend_from_slice(extract_pcm_for_concat(&data, path)?);
     }
     let wav = pcm_to_wav(&all_pcm, 24000);
-    std::fs::write(output_path, &wav)
-        .map_err(|e| format!("Failed to write {output_path}: {e}"))?;
+    std::fs::write(output_path, &wav).map_err(|e| format!("Failed to write {output_path}: {e}"))?;
     Ok(())
 }
 
@@ -302,7 +566,10 @@ fn concatenate_wavs_ffmpeg(wav_paths: &[String], output_path: &str) -> Result<()
         Ok(output) if output.status.success() => Ok(()),
         Ok(output) => {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            Err(format!("ffmpeg concat failed: {}", &stderr[..stderr.len().min(300)]))
+            Err(format!(
+                "ffmpeg concat failed: {}",
+                &stderr[..stderr.len().min(300)]
+            ))
         }
         Err(e) => Err(format!("ffmpeg not available: {e}")),
     }
@@ -332,23 +599,29 @@ enum ScriptLine {
     },
 }
 
-fn parse_script(script: &str) -> Vec<ScriptLine> {
-    let dialogue_re = Regex::new(
-        r"^\[([^\]\-]+)\s*-\s*([^\],]+),\s*([^\]]+)\]\s*(.+)$"
-    ).unwrap();
-    let bgm_re = Regex::new(
-        r"^\[BGM:\s*([^—\-]+)[—\-]\s*([^,]+),\s*(\d+)s?\]"
-    ).unwrap();
-    let pause_re = Regex::new(
-        r"^\[PAUSE:\s*(\d+)s?\]"
-    ).unwrap();
+#[derive(Debug, Default)]
+struct ScriptParseReport {
+    lines: Vec<ScriptLine>,
+    invalid_lines: Vec<String>,
+}
+
+fn parse_script_report(script: &str) -> ScriptParseReport {
+    let dialogue_re = Regex::new(r"^\[([^\]\-]+)\s*-\s*([^\],]+),\s*([^\]]+)\]\s*(.+)$").unwrap();
+    let bgm_re = Regex::new(r"^\[BGM:\s*([^—\-]+)[—\-]\s*([^,]+),\s*(\d+)s?\]").unwrap();
+    let pause_re = Regex::new(r"^\[PAUSE:\s*(\d+)s?\]").unwrap();
 
     let mut lines = Vec::new();
+    let mut invalid_lines = Vec::new();
     let mut seg_counter: u32 = 0;
 
     for line in script.lines() {
         let line = line.trim();
-        if line.is_empty() || line.starts_with('#') || line.starts_with('|') || line.starts_with("**") || line == "---" {
+        if line.is_empty()
+            || line.starts_with('#')
+            || line.starts_with('|')
+            || line.starts_with("**")
+            || line == "---"
+        {
             continue;
         }
 
@@ -383,9 +656,39 @@ fn parse_script(script: &str) -> Vec<ScriptLine> {
             lines.push(ScriptLine::Pause {
                 duration_s: caps[1].parse().unwrap_or(2),
             });
+        } else {
+            invalid_lines.push(line.to_string());
         }
     }
-    lines
+    ScriptParseReport {
+        lines,
+        invalid_lines,
+    }
+}
+
+#[cfg(test)]
+fn parse_script(script: &str) -> Vec<ScriptLine> {
+    parse_script_report(script).lines
+}
+
+fn format_invalid_script_lines(invalid_lines: &[String]) -> String {
+    let preview = invalid_lines
+        .iter()
+        .take(5)
+        .map(|line| format!("- {line}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let suffix = if invalid_lines.len() > 5 {
+        format!("\n...and {} more malformed lines", invalid_lines.len() - 5)
+    } else {
+        String::new()
+    };
+    format!(
+        "Script contains {} malformed non-metadata lines. Expected dialogue lines like [Character - voice, emotion] text, [BGM: ...], or [PAUSE: ...].\n{}{}",
+        invalid_lines.len(),
+        preview,
+        suffix
+    )
 }
 
 // ── TTS generation for a single segment ────────────────────────────
@@ -399,25 +702,30 @@ fn generate_tts_segment(
     emotion: &str,
     output_path: &str,
 ) -> Result<(), String> {
-    let prompt = emotion_to_prompt(emotion);
+    let language = infer_tts_language(text);
+    let prompt = emotion_to_prompt(emotion, language);
 
     let wav_bytes = if is_clone {
-        let ref_path = resolve_custom_voice(voice)
-            .ok_or_else(|| format!("Cloned voice '{}' not found. Save it first with fm_voice_save.", voice))?;
+        let ref_path = resolve_custom_voice(voice).ok_or_else(|| {
+            format!(
+                "Cloned voice '{}' not found. Save it first with fm_voice_save.",
+                voice
+            )
+        })?;
         let ref_bytes = std::fs::read(&ref_path)
             .map_err(|e| format!("Failed to read voice '{}': {e}", voice))?;
 
         use reqwest::blocking::multipart::{Form, Part};
-        let mut form = Form::new()
-            .text("input", text.to_string())
-            .text("language", "chinese".to_string())
-            .part(
-                "reference_audio",
-                Part::bytes(ref_bytes)
-                    .file_name("ref.wav")
-                    .mime_str("audio/wav")
-                    .unwrap(),
-            );
+        let mut form = Form::new().text("input", text.to_string()).part(
+            "reference_audio",
+            Part::bytes(ref_bytes)
+                .file_name("ref.wav")
+                .mime_str("audio/wav")
+                .unwrap(),
+        );
+        if let Some(language) = language {
+            form = form.text("language", language.api_value().to_string());
+        }
         if let Some(p) = prompt {
             form = form.text("prompt", p.to_string());
         }
@@ -432,9 +740,15 @@ fn generate_tts_segment(
 
         if !resp.status().is_success() {
             let t = resp.text().unwrap_or_default();
-            return Err(format!("Clone TTS error (HTTP): {}", &t.chars().take(200).collect::<String>()));
+            return Err(format!(
+                "Clone TTS error (HTTP): {}",
+                &t.chars().take(200).collect::<String>()
+            ));
         }
-        let bytes = resp.bytes().map_err(|e| format!("Read response: {e}"))?.to_vec();
+        let bytes = resp
+            .bytes()
+            .map_err(|e| format!("Read response: {e}"))?
+            .to_vec();
         if bytes.len() >= 4 && &bytes[..4] == b"RIFF" {
             bytes
         } else {
@@ -444,8 +758,10 @@ fn generate_tts_segment(
         let mut body = json!({
             "input": text,
             "voice": voice,
-            "language": "chinese"
         });
+        if let Some(language) = language {
+            body["language"] = json!(language.api_value());
+        }
         if let Some(p) = prompt {
             body["prompt"] = json!(p);
         }
@@ -460,9 +776,15 @@ fn generate_tts_segment(
 
         if !resp.status().is_success() {
             let t = resp.text().unwrap_or_default();
-            return Err(format!("Preset TTS error (HTTP): {}", &t.chars().take(200).collect::<String>()));
+            return Err(format!(
+                "Preset TTS error (HTTP): {}",
+                &t.chars().take(200).collect::<String>()
+            ));
         }
-        let bytes = resp.bytes().map_err(|e| format!("Read response: {e}"))?.to_vec();
+        let bytes = resp
+            .bytes()
+            .map_err(|e| format!("Read response: {e}"))?
+            .to_vec();
         if bytes.len() >= 4 && &bytes[..4] == b"RIFF" {
             bytes
         } else {
@@ -480,6 +802,32 @@ fn generate_tts_segment(
 }
 
 // ── Tool handlers ──────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+struct GenerateInput {
+    #[serde(default)]
+    script: Option<String>,
+    #[serde(default)]
+    script_path: Option<String>,
+    #[serde(default)]
+    output_dir: Option<String>,
+}
+
+struct SegmentDirCleanup {
+    path: PathBuf,
+}
+
+impl SegmentDirCleanup {
+    fn new(path: PathBuf) -> Self {
+        Self { path }
+    }
+}
+
+impl Drop for SegmentDirCleanup {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.path);
+    }
+}
 
 fn handle_voices(_input_json: &str) {
     let reg = load_registry();
@@ -500,28 +848,30 @@ fn handle_voices(_input_json: &str) {
         }
     } else {
         out.push_str("\n### Custom (cloned)\n");
-        out.push_str("_No custom voices saved yet. Use `fm_voice_save` in mofa-fm to clone a voice._\n");
+        out.push_str(
+            "_No custom voices saved yet. Use `fm_voice_save` in mofa-fm to clone a voice._\n",
+        );
     }
 
     succeed(&out);
 }
 
 fn handle_generate(input_json: &str) {
-    #[derive(Deserialize)]
-    struct Input {
-        #[serde(default)]
-        script: Option<String>,
-        #[serde(default)]
-        script_path: Option<String>,
-        #[serde(default)]
-        output_dir: Option<String>,
-    }
-
-    let input: Input = match serde_json::from_str(input_json) {
+    let input: GenerateInput = match serde_json::from_str(input_json) {
         Ok(v) => v,
         Err(e) => fail(&format!("Invalid input: {e}")),
     };
 
+    match generate_podcast(input) {
+        Ok(out) => {
+            println!("{out}");
+            std::process::exit(0);
+        }
+        Err(err) => fail(&err),
+    }
+}
+
+fn generate_podcast(input: GenerateInput) -> Result<serde_json::Value, String> {
     // Read script content
     let script = if let Some(s) = input.script {
         s
@@ -529,43 +879,102 @@ fn handle_generate(input_json: &str) {
         let resolved = resolve_workspace_relative_path(path);
         match std::fs::read_to_string(&resolved) {
             Ok(s) => s,
-            Err(e) => fail(&format!("Failed to read script file '{}': {e}", resolved.display())),
+            Err(e) => {
+                return Err(format!(
+                    "Failed to read script file '{}': {e}",
+                    resolved.display()
+                ))
+            }
         }
     } else {
-        fail("Either 'script' or 'script_path' must be provided");
+        return Err("Either 'script' or 'script_path' must be provided".to_string());
     };
 
     // Setup output directory
     let output_dir = resolve_output_dir(input.output_dir);
     let seg_dir = output_dir.join("segments");
-    let _ = std::fs::create_dir_all(&seg_dir);
+    std::fs::create_dir_all(&seg_dir).map_err(|e| {
+        format!(
+            "Failed to create segment directory '{}': {e}",
+            seg_dir.display()
+        )
+    })?;
+    let _seg_dir_cleanup = SegmentDirCleanup::new(seg_dir.clone());
 
     // Parse script
-    let lines = parse_script(&script);
-    if lines.is_empty() {
-        fail("No dialogue lines found in script. Ensure format: [Character - voice, emotion] text");
+    let parse_report = parse_script_report(&script);
+    if parse_report.lines.is_empty() {
+        return Err(
+            "No dialogue lines found in script. Ensure format: [Character - voice, emotion] text"
+                .to_string(),
+        );
     }
+    if !parse_report.invalid_lines.is_empty() {
+        return Err(format_invalid_script_lines(&parse_report.invalid_lines));
+    }
+    let lines = parse_report.lines;
 
-    let dialogue_count = lines.iter().filter(|l| matches!(l, ScriptLine::Dialogue { .. })).count();
-    eprintln!("[podcast] Parsed {} script lines ({} dialogue segments)", lines.len(), dialogue_count);
+    let dialogue_count = lines
+        .iter()
+        .filter(|l| matches!(l, ScriptLine::Dialogue { .. }))
+        .count();
+    eprintln!(
+        "[podcast] Parsed {} script lines ({} dialogue segments)",
+        lines.len(),
+        dialogue_count
+    );
 
     // Separate dialogue lines into built-in and clone groups.
     // Auto-detect: if a voice isn't a preset but exists in the clone registry, treat it as clone.
     let mut builtin_segments: Vec<(u32, String, String, String, String)> = Vec::new(); // (seg_id, voice, emotion, text, character)
     let mut clone_segments: Vec<(u32, String, String, String, String)> = Vec::new();
+    let mut configuration_errors: Vec<String> = Vec::new();
 
     for line in &lines {
-        if let ScriptLine::Dialogue { seg_id, voice, is_clone, emotion, text, character, .. } = line {
-            let entry = (*seg_id, voice.clone(), emotion.clone(), text.clone(), character.clone());
-            // If explicitly marked as clone, or if voice is not a preset but exists in clone registry
-            let is_actually_clone = *is_clone
-                || (!PRESET_VOICES.contains(&voice.as_str()) && resolve_custom_voice(voice).is_some());
-            if is_actually_clone {
+        if let ScriptLine::Dialogue {
+            seg_id,
+            voice,
+            is_clone,
+            emotion,
+            text,
+            character,
+            ..
+        } = line
+        {
+            let entry = (
+                *seg_id,
+                voice.clone(),
+                emotion.clone(),
+                text.clone(),
+                character.clone(),
+            );
+            let is_preset = PRESET_VOICES.contains(&voice.as_str());
+            let has_saved_clone = resolve_custom_voice(voice).is_some();
+            if *is_clone {
+                if has_saved_clone {
+                    clone_segments.push(entry);
+                } else {
+                    configuration_errors.push(format!(
+                        "seg_{seg_id:03} ({character}): cloned voice '{voice}' not found. Save it first with fm_voice_save."
+                    ));
+                }
+            } else if is_preset {
+                builtin_segments.push(entry);
+            } else if has_saved_clone {
                 clone_segments.push(entry);
             } else {
-                builtin_segments.push(entry);
+                configuration_errors.push(format!(
+                    "seg_{seg_id:03} ({character}): unknown voice '{voice}'. Use a preset voice or save a cloned voice first."
+                ));
             }
         }
+    }
+
+    if !configuration_errors.is_empty() {
+        return Err(format!(
+            "Invalid podcast voice configuration:\n{}",
+            configuration_errors.join("\n")
+        ));
     }
 
     // Sort each group by voice name to minimize model switching
@@ -581,15 +990,28 @@ fn handle_generate(input_json: &str) {
     let mut completed = 0;
 
     // Phase 1: Built-in voices
-    eprintln!("[podcast] Phase 1: Generating {} built-in voice segments...", builtin_segments.len());
+    eprintln!(
+        "[podcast] Phase 1: Generating {} built-in voice segments...",
+        builtin_segments.len()
+    );
     for (seg_id, voice, emotion, text, character) in &builtin_segments {
-        let seg_path = seg_dir.join(format!("{voice}_seg_{seg_id:03}.wav"));
+        let seg_path = segment_file_path(&seg_dir, voice, *seg_id);
         completed += 1;
-        eprintln!("[podcast] [{completed}/{total}] {character} ({voice}, {emotion}): {}...",
-            &text.chars().take(20).collect::<String>());
+        eprintln!(
+            "[podcast] [{completed}/{total}] {character} ({voice}, {emotion}): {}...",
+            &text.chars().take(20).collect::<String>()
+        );
 
-        match generate_tts_segment(&client, &base_url, voice, false, text, emotion, &seg_path.to_string_lossy()) {
-            Ok(()) => {},
+        match generate_tts_segment(
+            &client,
+            &base_url,
+            voice,
+            false,
+            text,
+            emotion,
+            &seg_path.to_string_lossy(),
+        ) {
+            Ok(()) => {}
             Err(e) => {
                 eprintln!("[podcast] ERROR seg_{seg_id:03}: {e}");
                 errors.push(format!("seg_{seg_id:03} ({character}): {e}"));
@@ -599,15 +1021,28 @@ fn handle_generate(input_json: &str) {
 
     // Phase 2: Cloned voices
     if !clone_segments.is_empty() {
-        eprintln!("[podcast] Phase 2: Generating {} cloned voice segments...", clone_segments.len());
+        eprintln!(
+            "[podcast] Phase 2: Generating {} cloned voice segments...",
+            clone_segments.len()
+        );
         for (seg_id, voice, emotion, text, character) in &clone_segments {
-            let seg_path = seg_dir.join(format!("{voice}_seg_{seg_id:03}.wav"));
+            let seg_path = segment_file_path(&seg_dir, voice, *seg_id);
             completed += 1;
-            eprintln!("[podcast] [{completed}/{total}] {character} (clone:{voice}, {emotion}): {}...",
-                &text.chars().take(20).collect::<String>());
+            eprintln!(
+                "[podcast] [{completed}/{total}] {character} (clone:{voice}, {emotion}): {}...",
+                &text.chars().take(20).collect::<String>()
+            );
 
-            match generate_tts_segment(&client, &base_url, voice, true, text, emotion, &seg_path.to_string_lossy()) {
-                Ok(()) => {},
+            match generate_tts_segment(
+                &client,
+                &base_url,
+                voice,
+                true,
+                text,
+                emotion,
+                &seg_path.to_string_lossy(),
+            ) {
+                Ok(()) => {}
                 Err(e) => {
                     eprintln!("[podcast] ERROR seg_{seg_id:03}: {e}");
                     errors.push(format!("seg_{seg_id:03} ({character}): {e}"));
@@ -621,45 +1056,44 @@ fn handle_generate(input_json: &str) {
     let mut timeline_wavs: Vec<String> = Vec::new();
     let mut assembled_dialogue_segments = 0usize;
 
-    for line in &lines {
+    for (line_index, line) in lines.iter().enumerate() {
         match line {
             ScriptLine::Dialogue { seg_id, voice, .. } => {
-                let seg_path = seg_dir.join(format!("{voice}_seg_{seg_id:03}.wav"));
+                let seg_path = segment_file_path(&seg_dir, voice, *seg_id);
                 if seg_path.exists() {
                     timeline_wavs.push(seg_path.to_string_lossy().to_string());
                     assembled_dialogue_segments += 1;
                     // Insert inter-speaker pause (400ms)
                     let pause_path = seg_dir.join(format!("pause_after_{seg_id:03}.wav"));
                     let silence = generate_silence_wav(400);
-                    let _ = std::fs::write(&pause_path, &silence);
+                    write_file_bytes(&pause_path, &silence, "inter-speaker pause")?;
                     timeline_wavs.push(pause_path.to_string_lossy().to_string());
                 } else {
                     errors.push(format!("seg_{seg_id:03}: missing generated dialogue audio"));
                 }
             }
             ScriptLine::Pause { duration_s } => {
-                let pause_path = seg_dir.join(format!("pause_{}.wav", timestamp()));
+                let pause_path = placeholder_file_path(&seg_dir, "pause_line", line_index);
                 let silence = generate_silence_wav(duration_s * 1000);
-                let _ = std::fs::write(&pause_path, &silence);
+                write_file_bytes(&pause_path, &silence, "pause placeholder")?;
                 timeline_wavs.push(pause_path.to_string_lossy().to_string());
             }
             ScriptLine::Bgm { duration_s, .. } => {
                 // BGM placeholder: insert silence for now (music mixed in post-production)
-                let bgm_path = seg_dir.join(format!("bgm_placeholder_{}.wav", timestamp()));
+                let bgm_path = placeholder_file_path(&seg_dir, "bgm_placeholder_line", line_index);
                 let silence = generate_silence_wav(duration_s * 1000);
-                let _ = std::fs::write(&bgm_path, &silence);
+                write_file_bytes(&bgm_path, &silence, "BGM placeholder")?;
                 timeline_wavs.push(bgm_path.to_string_lossy().to_string());
             }
         }
     }
 
     if timeline_wavs.is_empty() {
-        fail("No audio segments were generated successfully");
+        return Err("No audio segments were generated successfully".to_string());
     }
 
     if assembled_dialogue_segments != dialogue_count {
-        let _ = std::fs::remove_dir_all(&seg_dir);
-        fail(&format!(
+        return Err(format!(
             "Podcast generation incomplete: expected {dialogue_count} dialogue segments, but only assembled {assembled_dialogue_segments}. Failed segments:\n{}",
             errors.join("\n")
         ));
@@ -668,44 +1102,43 @@ fn handle_generate(input_json: &str) {
     // Concatenate all WAVs
     let concat_wav = output_dir.join(format!("podcast_full_{}.wav", timestamp()));
     if let Err(e) = concatenate_wavs(&timeline_wavs, &concat_wav.to_string_lossy()) {
-        fail(&format!("Concatenation failed: {e}"));
+        return Err(format!("Concatenation failed: {e}"));
     }
 
     // Convert to MP3
-    let final_path = try_convert_to_mp3(&concat_wav.to_string_lossy());
+    let final_audio = finalize_audio_output(&concat_wav.to_string_lossy());
 
     // Ensure absolute path for files_to_send (crew needs absolute paths for auto-delivery)
-    let final_path = std::fs::canonicalize(&final_path)
+    let final_path = std::fs::canonicalize(&final_audio.path)
         .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or(final_path);
-
-    // Clean up segment files
-    let _ = std::fs::remove_dir_all(&seg_dir);
+        .unwrap_or(final_audio.path);
 
     // Report
     let file_size = std::fs::metadata(&final_path).map(|m| m.len()).unwrap_or(0);
+    if file_size == 0 {
+        return Err(format!(
+            "Final {} output file was empty: {}",
+            final_audio.format, final_path
+        ));
+    }
     let size_mb = file_size as f64 / 1_048_576.0;
 
     let mut output_msg = format!(
         "Podcast generated successfully!\n\
          - Segments: {dialogue_count} dialogue + {} BGM/pause\n\
-         - Output: {final_path} ({size_mb:.1} MB)",
-        lines.len() - dialogue_count
+         - Output: {final_path} ({size_mb:.1} MB, {})",
+        lines.len() - dialogue_count,
+        final_audio.format.to_uppercase()
     );
-    if !errors.is_empty() {
-        output_msg.push_str(&format!("\n- Warnings: {} segments failed:\n", errors.len()));
-        for e in &errors {
-            output_msg.push_str(&format!("  - {e}\n"));
-        }
+    if let Some(warning) = &final_audio.warning {
+        output_msg.push_str(&format!("\n- Note: {warning}"));
     }
 
-    let out = json!({
+    Ok(json!({
         "output": output_msg,
-        "success": errors.is_empty(),
+        "success": true,
         "files_to_send": [&final_path]
-    });
-    println!("{out}");
-    std::process::exit(0);
+    }))
 }
 
 // ── Utility ────────────────────────────────────────────────────────
@@ -743,7 +1176,14 @@ mod tests {
         let lines = parse_script(script);
         assert_eq!(lines.len(), 1);
         match &lines[0] {
-            ScriptLine::Dialogue { seg_id, character, voice, is_clone, emotion, text } => {
+            ScriptLine::Dialogue {
+                seg_id,
+                character,
+                voice,
+                is_clone,
+                emotion,
+                text,
+            } => {
                 assert_eq!(*seg_id, 1);
                 assert_eq!(character, "Host");
                 assert_eq!(voice, "vivian");
@@ -761,7 +1201,9 @@ mod tests {
         let lines = parse_script(script);
         assert_eq!(lines.len(), 1);
         match &lines[0] {
-            ScriptLine::Dialogue { voice, is_clone, .. } => {
+            ScriptLine::Dialogue {
+                voice, is_clone, ..
+            } => {
                 assert_eq!(voice, "sarah");
                 assert!(*is_clone);
             }
@@ -775,7 +1217,11 @@ mod tests {
         let lines = parse_script(script);
         assert_eq!(lines.len(), 1);
         match &lines[0] {
-            ScriptLine::Bgm { description, fade, duration_s } => {
+            ScriptLine::Bgm {
+                description,
+                fade,
+                duration_s,
+            } => {
                 assert_eq!(description, "Upbeat intro music");
                 assert_eq!(fade, "fade-in");
                 assert_eq!(*duration_s, 5);
@@ -853,10 +1299,14 @@ mod tests {
         // Check types in order
         assert!(matches!(&lines[0], ScriptLine::Bgm { .. }));
         assert!(matches!(&lines[1], ScriptLine::Dialogue { character, .. } if character == "Host"));
-        assert!(matches!(&lines[2], ScriptLine::Dialogue { character, .. } if character == "Guest"));
+        assert!(
+            matches!(&lines[2], ScriptLine::Dialogue { character, .. } if character == "Guest")
+        );
         assert!(matches!(&lines[3], ScriptLine::Pause { duration_s: 2 }));
         assert!(matches!(&lines[4], ScriptLine::Dialogue { character, .. } if character == "Host"));
-        assert!(matches!(&lines[5], ScriptLine::Dialogue { character, .. } if character == "Guest"));
+        assert!(
+            matches!(&lines[5], ScriptLine::Dialogue { character, .. } if character == "Guest")
+        );
         assert!(matches!(&lines[6], ScriptLine::Bgm { .. }));
     }
 
@@ -865,9 +1315,15 @@ mod tests {
         let script = "[A - vivian, calm] Line one.\n[B - ryan, calm] Line two.\n[C - serena, calm] Line three.";
         let lines = parse_script(script);
         assert_eq!(lines.len(), 3);
-        if let ScriptLine::Dialogue { seg_id, .. } = &lines[0] { assert_eq!(*seg_id, 1); }
-        if let ScriptLine::Dialogue { seg_id, .. } = &lines[1] { assert_eq!(*seg_id, 2); }
-        if let ScriptLine::Dialogue { seg_id, .. } = &lines[2] { assert_eq!(*seg_id, 3); }
+        if let ScriptLine::Dialogue { seg_id, .. } = &lines[0] {
+            assert_eq!(*seg_id, 1);
+        }
+        if let ScriptLine::Dialogue { seg_id, .. } = &lines[1] {
+            assert_eq!(*seg_id, 2);
+        }
+        if let ScriptLine::Dialogue { seg_id, .. } = &lines[2] {
+            assert_eq!(*seg_id, 3);
+        }
     }
 
     #[test]
@@ -884,7 +1340,9 @@ mod tests {
         let lines = parse_script(script);
         assert_eq!(lines.len(), 1);
         match &lines[0] {
-            ScriptLine::Dialogue { character, text, .. } => {
+            ScriptLine::Dialogue {
+                character, text, ..
+            } => {
                 assert_eq!(character, "主持人");
                 assert_eq!(text, "大家好，欢迎收听今天的节目！");
             }
@@ -899,6 +1357,14 @@ mod tests {
     }
 
     #[test]
+    fn parse_report_collects_invalid_lines() {
+        let script = "[Host - vivian, calm] Valid line.\nthis is not valid\n[PAUSE: 2s]";
+        let report = parse_script_report(script);
+        assert_eq!(report.lines.len(), 2);
+        assert_eq!(report.invalid_lines, vec!["this is not valid".to_string()]);
+    }
+
+    #[test]
     fn parse_only_metadata() {
         let script = "# Title\n\n**Genre**: drama\n\n---\n";
         let lines = parse_script(script);
@@ -907,18 +1373,23 @@ mod tests {
 
     #[test]
     fn parse_mixed_clone_and_preset() {
-        let script = "[A - vivian, calm] Preset voice.\n[B - clone:custom_voice, excited] Cloned voice.";
+        let script =
+            "[A - vivian, calm] Preset voice.\n[B - clone:custom_voice, excited] Cloned voice.";
         let lines = parse_script(script);
         assert_eq!(lines.len(), 2);
         match &lines[0] {
-            ScriptLine::Dialogue { is_clone, voice, .. } => {
+            ScriptLine::Dialogue {
+                is_clone, voice, ..
+            } => {
                 assert!(!is_clone);
                 assert_eq!(voice, "vivian");
             }
             _ => panic!("Expected Dialogue"),
         }
         match &lines[1] {
-            ScriptLine::Dialogue { is_clone, voice, .. } => {
+            ScriptLine::Dialogue {
+                is_clone, voice, ..
+            } => {
                 assert!(*is_clone);
                 assert_eq!(voice, "custom_voice");
             }
@@ -930,34 +1401,51 @@ mod tests {
 
     #[test]
     fn emotion_calm_returns_none() {
-        assert!(emotion_to_prompt("calm").is_none());
+        assert!(emotion_to_prompt("calm", Some(TtsLanguage::Chinese)).is_none());
     }
 
     #[test]
     fn emotion_excited_returns_prompt() {
-        let p = emotion_to_prompt("excited");
+        let p = emotion_to_prompt("excited", Some(TtsLanguage::Chinese));
         assert!(p.is_some());
         assert!(p.unwrap().contains("兴奋"));
     }
 
     #[test]
     fn emotion_case_insensitive() {
-        assert!(emotion_to_prompt("EXCITED").is_some());
-        assert!(emotion_to_prompt("Cheerful").is_some());
-        assert!(emotion_to_prompt("  warm  ").is_some());
+        assert!(emotion_to_prompt("EXCITED", Some(TtsLanguage::Chinese)).is_some());
+        assert!(emotion_to_prompt("Cheerful", Some(TtsLanguage::Chinese)).is_some());
+        assert!(emotion_to_prompt("  warm  ", Some(TtsLanguage::Chinese)).is_some());
     }
 
     #[test]
     fn emotion_unknown_returns_none() {
-        assert!(emotion_to_prompt("confused").is_none());
-        assert!(emotion_to_prompt("").is_none());
+        assert!(emotion_to_prompt("confused", Some(TtsLanguage::Chinese)).is_none());
+        assert!(emotion_to_prompt("", Some(TtsLanguage::Chinese)).is_none());
     }
 
     #[test]
     fn all_documented_emotions_have_prompts() {
-        let emotions = ["excited", "serious", "warm", "angry", "sad", "cheerful", "dramatic", "curious", "thoughtful"];
+        let emotions = [
+            "excited",
+            "serious",
+            "warm",
+            "angry",
+            "sad",
+            "cheerful",
+            "dramatic",
+            "curious",
+            "thoughtful",
+        ];
         for e in emotions {
-            assert!(emotion_to_prompt(e).is_some(), "Missing prompt for '{e}'");
+            assert!(
+                emotion_to_prompt(e, Some(TtsLanguage::Chinese)).is_some(),
+                "Missing prompt for '{e}'"
+            );
+            assert!(
+                emotion_to_prompt(e, Some(TtsLanguage::English)).is_some(),
+                "Missing English prompt for '{e}'"
+            );
         }
     }
 
@@ -984,7 +1472,7 @@ mod tests {
     #[test]
     fn generate_silence_correct_length() {
         let wav = generate_silence_wav(1000); // 1 second
-        // 24000 samples/sec * 2 bytes/sample = 48000 bytes PCM + 44 header
+                                              // 24000 samples/sec * 2 bytes/sample = 48000 bytes PCM + 44 header
         assert_eq!(wav.len(), 48000 + 44);
     }
 
@@ -1004,6 +1492,77 @@ mod tests {
         }
     }
 
+    #[test]
+    fn silence_is_not_meaningful_tts_audio() {
+        let wav = generate_silence_wav(500);
+        assert!(!has_meaningful_tts_audio(&wav));
+    }
+
+    #[test]
+    fn infer_tts_language_detects_chinese_and_english() {
+        assert_eq!(
+            infer_tts_language("大家好，欢迎收听节目"),
+            Some(TtsLanguage::Chinese)
+        );
+        assert_eq!(
+            infer_tts_language("Hello and welcome to the show"),
+            Some(TtsLanguage::English)
+        );
+    }
+
+    #[test]
+    fn sanitize_filename_component_strips_path_characters() {
+        assert_eq!(
+            sanitize_filename_component("../../yangmi:demo"),
+            "yangmi_demo"
+        );
+        assert_eq!(sanitize_filename_component("voice/name"), "voice_name");
+    }
+
+    #[test]
+    fn segment_file_path_is_kept_under_segments_dir() {
+        let seg_dir = PathBuf::from("/tmp/mofa-podcast-test-segments");
+        let path = segment_file_path(&seg_dir, "../../escape", 7);
+        assert_eq!(path, seg_dir.join("seg_007_escape.wav"));
+    }
+
+    #[test]
+    fn placeholder_paths_are_unique_per_line() {
+        let seg_dir = PathBuf::from("/tmp/mofa-podcast-test-segments");
+        let a = placeholder_file_path(&seg_dir, "pause_line", 1);
+        let b = placeholder_file_path(&seg_dir, "pause_line", 2);
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn concat_fallback_rejects_wrong_wav_format() {
+        let wav = pcm_to_wav(&vec![0u8; 200], 22050);
+        let err = extract_pcm_for_concat(&wav, "bad.wav").unwrap_err();
+        assert!(err.contains("24kHz mono 16-bit PCM"));
+    }
+
+    #[test]
+    fn generate_podcast_rejects_unknown_voice_before_network_work() {
+        let input = GenerateInput {
+            script: Some("[Host - not_a_real_voice, calm] hello".to_string()),
+            script_path: None,
+            output_dir: Some(format!("/tmp/mofa-podcast-test-{}", timestamp())),
+        };
+        let err = generate_podcast(input).unwrap_err();
+        assert!(err.contains("unknown voice"));
+    }
+
+    #[test]
+    fn generate_podcast_rejects_malformed_script_lines() {
+        let input = GenerateInput {
+            script: Some("[Host - vivian, calm] hello\nnot valid".to_string()),
+            script_path: None,
+            output_dir: Some(format!("/tmp/mofa-podcast-test-{}", timestamp())),
+        };
+        let err = generate_podcast(input).unwrap_err();
+        assert!(err.contains("malformed non-metadata lines"));
+    }
+
     // ── Voice grouping / ordering tests ────────────────────────────
 
     #[test]
@@ -1017,7 +1576,13 @@ mod tests {
         let mut builtin = Vec::new();
         let mut cloned = Vec::new();
         for line in &lines {
-            if let ScriptLine::Dialogue { is_clone, voice, seg_id, .. } = line {
+            if let ScriptLine::Dialogue {
+                is_clone,
+                voice,
+                seg_id,
+                ..
+            } = line
+            {
                 if *is_clone {
                     cloned.push((*seg_id, voice.clone()));
                 } else {
@@ -1067,6 +1632,8 @@ fn main() {
     match args[1].as_str() {
         "podcast_voices" => handle_voices(&input),
         "podcast_generate" => handle_generate(&input),
-        other => fail(&format!("Unknown tool: {other}. Available: podcast_voices, podcast_generate")),
+        other => fail(&format!(
+            "Unknown tool: {other}. Available: podcast_voices, podcast_generate"
+        )),
     }
 }

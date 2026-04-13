@@ -1,23 +1,17 @@
 {
   "name": "mofa-skills",
-  "version": "0.4.2",
-  "description": "AI-powered content creation suite: presentations, cards, comics, infographics, voice cloning, and office document processing",
+  "version": "0.4.3",
+  "description": "AI-powered content creation suite: presentations, cards, comics, infographics, lesson websites, deployment workflows, voice cloning, and office document processing",
   "repo": "mofa-org/mofa-skills",
-  "skills": [
-    "mofa-slides",
-    "mofa-cards",
-    "mofa-comic",
-    "mofa-infographic",
-    "mofa-fm",
-    "mofa-podcast",
-    "mofa-pdf",
-    "mofa-xlsx"
+  "exclude_skills": [
+    "mofa-cli"
   ],
   "requires": ["git", "cargo"],
   "tags": [
     "ai", "pptx", "image-gen", "gemini", "batch-api",
     "comic", "manga", "xkcd",
     "infographic", "poster",
+    "website", "quarto", "github-pages", "static-site",
     "tts", "voice-cloning", "speech", "audio", "qwen3-tts", "emotion",
     "podcast", "multi-speaker", "dialogue", "talk-show",
     "pdf", "excel", "xlsx", "spreadsheet",

@@ -1,0 +1,10 @@
+{
+  "name": "mofa-site-studio",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Interactive three-panel studio for scaffolding and previewing mofa-site sessions.",
+  "scripts": {
+    "start": "node server.js",
+    "smoke": "node playwright.smoke.cjs"
+  }
+}

@@ -30,8 +30,7 @@ fn gen_sections_sync(
     image_size: Option<&str>,
     concurrency: usize,
 ) -> Vec<Option<PathBuf>> {
-    let paths: Arc<Mutex<Vec<Option<PathBuf>>>> =
-        Arc::new(Mutex::new(vec![None; total]));
+    let paths: Arc<Mutex<Vec<Option<PathBuf>>>> = Arc::new(Mutex::new(vec![None; total]));
 
     let pool = rayon::ThreadPoolBuilder::new()
         .num_threads(concurrency)
@@ -44,12 +43,19 @@ fn gen_sections_sync(
 
             s.spawn(move |_| {
                 let variant = section.variant.as_deref().unwrap_or_else(|| {
-                    if idx == 0 { "header" } else if idx == total - 1 { "footer" } else { "normal" }
+                    if idx == 0 {
+                        "header"
+                    } else if idx == total - 1 {
+                        "footer"
+                    } else {
+                        "normal"
+                    }
                 });
                 let prefix = style.get_prompt(variant);
                 let full_prompt = format!(
                     "{prefix}\n\nSection {} of {total}:\n{}",
-                    idx + 1, section.prompt
+                    idx + 1,
+                    section.prompt
                 );
                 let padded = format!("{:02}", idx + 1);
                 let out_path = out_dir.join(format!("section-{padded}.png"));
@@ -108,13 +114,23 @@ pub fn run(
             .enumerate()
             .map(|(idx, section)| {
                 let variant = section.variant.as_deref().unwrap_or_else(|| {
-                    if idx == 0 { "header" } else if idx == total - 1 { "footer" } else { "normal" }
+                    if idx == 0 {
+                        "header"
+                    } else if idx == total - 1 {
+                        "footer"
+                    } else {
+                        "normal"
+                    }
                 });
                 let prefix = style.get_prompt(variant);
                 let padded = format!("{:02}", idx + 1);
                 BatchImageRequest {
                     key: format!("section-{padded}"),
-                    prompt: format!("{prefix}\n\nSection {} of {total}:\n{}", idx + 1, section.prompt),
+                    prompt: format!(
+                        "{prefix}\n\nSection {} of {total}:\n{}",
+                        idx + 1,
+                        section.prompt
+                    ),
                     out_file: out_dir.join(format!("section-{padded}.png")),
                     image_size: image_size.map(String::from),
                     aspect_ratio: Some(ar.to_string()),
@@ -127,11 +143,31 @@ pub fn run(
             Ok(r) => r,
             Err(e) => {
                 eprintln!("Batch failed ({e}), falling back to parallel sync...");
-                gen_sections_sync(&gemini, out_dir, sections, style, total, model, ar, image_size, concurrency)
+                gen_sections_sync(
+                    &gemini,
+                    out_dir,
+                    sections,
+                    style,
+                    total,
+                    model,
+                    ar,
+                    image_size,
+                    concurrency,
+                )
             }
         }
     } else {
-        gen_sections_sync(&gemini, out_dir, sections, style, total, model, ar, image_size, concurrency)
+        gen_sections_sync(
+            &gemini,
+            out_dir,
+            sections,
+            style,
+            total,
+            model,
+            ar,
+            image_size,
+            concurrency,
+        )
     };
 
     // Phase 2: Optional Qwen-Edit refinement (sequential)

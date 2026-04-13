@@ -1,0 +1,20 @@
+{
+  email admin@example.com
+}
+
+# Recommended: dedicate a subdomain to the proxied app.
+mofa.crew.ominix.io {
+  reverse_proxy 127.0.0.1:3100
+}
+
+# Alternative: keep the shared host and mount one proxied app under /sites/mofa/.
+crew.ominix.io {
+  handle_path /sites/mofa/* {
+    reverse_proxy 127.0.0.1:3100
+  }
+
+  handle {
+    root * /Users/cloud/octos-web
+    file_server
+  }
+}

@@ -25,11 +25,21 @@ pub struct TextShadow {
     pub color: String,
 }
 
-fn default_shadow_blur() -> f64 { 4.0 }
-fn default_shadow_offset() -> f64 { 2.0 }
-fn default_shadow_angle() -> f64 { 45.0 }
-fn default_shadow_opacity() -> f64 { 0.6 }
-fn default_shadow_color() -> String { "000000".into() }
+fn default_shadow_blur() -> f64 {
+    4.0
+}
+fn default_shadow_offset() -> f64 {
+    2.0
+}
+fn default_shadow_angle() -> f64 {
+    45.0
+}
+fn default_shadow_opacity() -> f64 {
+    0.6
+}
+fn default_shadow_color() -> String {
+    "000000".into()
+}
 
 /// Fill specification for text box background.
 #[derive(Deserialize, Debug, Clone)]
@@ -40,7 +50,9 @@ pub struct TextFill {
     pub transparency: f64,
 }
 
-fn default_fill_color() -> String { "000000".into() }
+fn default_fill_color() -> String {
+    "000000".into()
+}
 
 /// Text overlay specification matching mofa-pptx `texts` API.
 #[derive(Deserialize, Debug, Clone)]
@@ -93,13 +105,27 @@ pub struct TextRun {
     pub break_line: Option<bool>,
 }
 
-fn default_x() -> f64 { 0.5 }
-fn default_y() -> f64 { 0.5 }
-fn default_w() -> f64 { 6.0 }
-fn default_h() -> f64 { 1.0 }
-fn default_color() -> String { "FFFFFF".into() }
-fn default_align() -> String { "l".into() }
-fn default_valign() -> String { "t".into() }
+fn default_x() -> f64 {
+    0.5
+}
+fn default_y() -> f64 {
+    0.5
+}
+fn default_w() -> f64 {
+    6.0
+}
+fn default_h() -> f64 {
+    1.0
+}
+fn default_color() -> String {
+    "FFFFFF".into()
+}
+fn default_align() -> String {
+    "l".into()
+}
+fn default_valign() -> String {
+    "t".into()
+}
 
 fn inches_to_emu(inches: f64) -> i64 {
     (inches * EMU_PER_INCH).round() as i64
@@ -181,16 +207,22 @@ fn build_text_shape_xml(overlay: &TextOverlay, shape_id: u32) -> String {
     };
 
     // Inset margin (same all sides, in EMU)
-    let inset = overlay.margin.map(|m| {
-        let emu = (m * 12700.0) as i64; // pt to EMU
-        format!(r#" lIns="{emu}" tIns="{emu}" rIns="{emu}" bIns="{emu}""#)
-    }).unwrap_or_else(|| r#" lIns="0" tIns="0" rIns="0" bIns="0""#.to_string());
+    let inset = overlay
+        .margin
+        .map(|m| {
+            let emu = (m * 12700.0) as i64; // pt to EMU
+            format!(r#" lIns="{emu}" tIns="{emu}" rIns="{emu}" bIns="{emu}""#)
+        })
+        .unwrap_or_else(|| r#" lIns="0" tIns="0" rIns="0" bIns="0""#.to_string());
 
     // Line spacing in 100ths of a point
-    let line_spacing_xml = overlay.line_spacing.map(|ls| {
-        let val = (ls * 100.0) as i64;
-        format!(r#"<a:lnSpc><a:spcPts val="{val}"/></a:lnSpc>"#)
-    }).unwrap_or_default();
+    let line_spacing_xml = overlay
+        .line_spacing
+        .map(|ls| {
+            let val = (ls * 100.0) as i64;
+            format!(r#"<a:lnSpc><a:spcPts val="{val}"/></a:lnSpc>"#)
+        })
+        .unwrap_or_default();
 
     let para_content = if let Some(runs) = &overlay.runs {
         let mut xml = String::new();
@@ -210,7 +242,14 @@ fn build_text_shape_xml(overlay: &TextOverlay, shape_id: u32) -> String {
         let text = overlay.text.as_deref().unwrap_or("");
         let lines: Vec<&str> = text.split('\n').collect();
         if lines.len() <= 1 {
-            build_run_xml(text, font_face, font_size, &overlay.color, overlay.bold, overlay.italic)
+            build_run_xml(
+                text,
+                font_face,
+                font_size,
+                &overlay.color,
+                overlay.bold,
+                overlay.italic,
+            )
         } else {
             // Multi-line: each line becomes a separate <a:p> paragraph
             let mut xml = String::new();
@@ -219,7 +258,14 @@ fn build_text_shape_xml(overlay: &TextOverlay, shape_id: u32) -> String {
                     // Close previous paragraph, open new one
                     xml.push_str(&format!(r#"</a:p><a:p><a:pPr algn="{align}" indent="0" marL="0"><a:buNone/></a:pPr>"#));
                 }
-                xml.push_str(&build_run_xml(line, font_face, font_size, &overlay.color, overlay.bold, overlay.italic));
+                xml.push_str(&build_run_xml(
+                    line,
+                    font_face,
+                    font_size,
+                    &overlay.color,
+                    overlay.bold,
+                    overlay.italic,
+                ));
             }
             xml
         }
@@ -246,8 +292,12 @@ pub struct ImageOverlay {
     pub h: f64,
 }
 
-fn default_overlay_w() -> f64 { 2.0 }
-fn default_overlay_h() -> f64 { 1.5 }
+fn default_overlay_w() -> f64 {
+    2.0
+}
+fn default_overlay_h() -> f64 {
+    1.5
+}
 
 /// Data for a single slide in a multi-slide PPTX.
 pub struct SlideData {
@@ -398,9 +448,7 @@ pub fn build_pptx(slides: &[SlideData], out_file: &Path, slide_w: f64, slide_h: 
         let slide_num = i + 1;
         let slide_id = 256 + i as u32;
         let rid = format!("rId{}", i + 2);
-        slide_id_list.push_str(&format!(
-            r#"<p:sldId id="{slide_id}" r:id="{rid}"/>"#
-        ));
+        slide_id_list.push_str(&format!(r#"<p:sldId id="{slide_id}" r:id="{rid}"/>"#));
         pres_rels_slides.push_str(&format!(
             r#"
 <Relationship Id="{rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide{slide_num}.xml"/>"#
@@ -410,11 +458,7 @@ pub fn build_pptx(slides: &[SlideData], out_file: &Path, slide_w: f64, slide_h: 
     // Content types — collect unique image extensions
     let mut img_ext_types = std::collections::HashSet::new();
     for (name, _, ctype) in &media_entries {
-        let ext = Path::new(name)
-            .extension()
-            .unwrap()
-            .to_str()
-            .unwrap();
+        let ext = Path::new(name).extension().unwrap().to_str().unwrap();
         img_ext_types.insert((ext.to_string(), ctype.to_string()));
     }
 

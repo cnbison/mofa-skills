@@ -87,17 +87,31 @@ Return ONLY a JSON array."#
                 let yp = v.get("yPct").and_then(|n| n.as_f64()).unwrap_or(0.0);
                 let wp = v.get("wPct").and_then(|n| n.as_f64()).unwrap_or(30.0);
                 let hp = v.get("hPct").and_then(|n| n.as_f64()).unwrap_or(5.0);
-                (xp * sw / 100.0, yp * sh / 100.0, wp * sw / 100.0, hp * sh / 100.0)
+                (
+                    xp * sw / 100.0,
+                    yp * sh / 100.0,
+                    wp * sw / 100.0,
+                    hp * sh / 100.0,
+                )
             } else {
                 let px = v.get("px").and_then(|n| n.as_f64()).unwrap_or(0.0);
                 let py = v.get("py").and_then(|n| n.as_f64()).unwrap_or(0.0);
                 let pw = v.get("pw").and_then(|n| n.as_f64()).unwrap_or(400.0);
                 let ph = v.get("ph").and_then(|n| n.as_f64()).unwrap_or(50.0);
-                (px * sw / img_w, py * sh / img_h, pw * sw / img_w, ph * sh / img_h)
+                (
+                    px * sw / img_w,
+                    py * sh / img_h,
+                    pw * sw / img_w,
+                    ph * sh / img_h,
+                )
             };
 
             let font_size = v.get("fontSize").and_then(|n| n.as_f64());
-            let align = v.get("align").and_then(|a| a.as_str()).unwrap_or("l").to_string();
+            let align = v
+                .get("align")
+                .and_then(|a| a.as_str())
+                .unwrap_or("l")
+                .to_string();
 
             TextOverlay {
                 text,
@@ -106,7 +120,11 @@ Return ONLY a JSON array."#
                 w,
                 h,
                 font_size,
-                color: v.get("color").and_then(|c| c.as_str()).unwrap_or("333333").to_string(),
+                color: v
+                    .get("color")
+                    .and_then(|c| c.as_str())
+                    .unwrap_or("333333")
+                    .to_string(),
                 bold: v.get("bold").and_then(|b| b.as_bool()).unwrap_or(false),
                 italic: false,
                 font_face: v.get("fontFace").and_then(|f| f.as_str()).map(String::from),
@@ -131,20 +149,24 @@ Return ONLY a JSON array."#
 
     // Find topmost and bottommost y to detect title/footer by relative position
     let min_y = overlays.iter().map(|ov| ov.y).fold(f64::INFINITY, f64::min);
-    let max_y = overlays.iter().map(|ov| ov.y).fold(f64::NEG_INFINITY, f64::max);
+    let max_y = overlays
+        .iter()
+        .map(|ov| ov.y)
+        .fold(f64::NEG_INFINITY, f64::max);
 
     for ov in &mut overlays {
         // Title/footer (within 0.3" of top/bottom) or centered wide elements → full width
-        if ov.y - min_y < 0.3
-            || max_y - ov.y < 0.3
-            || (ov.align == "ctr" && ov.w > sw * 0.4)
-        {
+        if ov.y - min_y < 0.3 || max_y - ov.y < 0.3 || (ov.align == "ctr" && ov.w > sw * 0.4) {
             ov.x = 0.3;
             ov.w = sw - 0.6;
         }
         // Clamp to slide bounds
-        if ov.x < 0.0 { ov.x = 0.0; }
-        if ov.x + ov.w > sw { ov.w = sw - ov.x; }
+        if ov.x < 0.0 {
+            ov.x = 0.0;
+        }
+        if ov.x + ov.w > sw {
+            ov.w = sw - ov.x;
+        }
     }
 
     Ok(overlays)
@@ -171,8 +193,14 @@ pub fn refine_text_layout(
         .decode()?
         .to_rgba8();
     let colors: &[(u8, u8, u8)] = &[
-        (255, 0, 0), (0, 170, 0), (0, 0, 255), (255, 136, 0),
-        (170, 0, 170), (0, 170, 170), (255, 68, 68), (68, 170, 68),
+        (255, 0, 0),
+        (0, 170, 0),
+        (0, 0, 255),
+        (255, 136, 0),
+        (170, 0, 170),
+        (0, 170, 170),
+        (255, 68, 68),
+        (68, 170, 68),
     ];
 
     // Build description of current boxes for the prompt
@@ -192,12 +220,20 @@ pub fn refine_text_layout(
             let x1 = ((px + pw - t).max(0) as u32).min(iw - 1);
             let y1 = ((py + ph - t).max(0) as u32).min(ih - 1);
             for x in x0..=x1 {
-                if y0 < ih { img.put_pixel(x.min(iw - 1), y0, color); }
-                if y1 < ih { img.put_pixel(x.min(iw - 1), y1, color); }
+                if y0 < ih {
+                    img.put_pixel(x.min(iw - 1), y0, color);
+                }
+                if y1 < ih {
+                    img.put_pixel(x.min(iw - 1), y1, color);
+                }
             }
             for y in y0..=y1 {
-                if x0 < iw { img.put_pixel(x0, y.min(ih - 1), color); }
-                if x1 < iw { img.put_pixel(x1, y.min(ih - 1), color); }
+                if x0 < iw {
+                    img.put_pixel(x0, y.min(ih - 1), color);
+                }
+                if x1 < iw {
+                    img.put_pixel(x1, y.min(ih - 1), color);
+                }
             }
         }
 
@@ -293,7 +329,9 @@ Return ONLY the JSON array."#
             ov.w = sw - 0.6;
         }
         // Clamp to slide bounds
-        if ov.x + ov.w > sw { ov.w = sw - ov.x; }
+        if ov.x + ov.w > sw {
+            ov.w = sw - ov.x;
+        }
     }
 
     Ok(refined)
@@ -335,7 +373,8 @@ fn fix_bbox_from_font_size(overlays: &mut [TextOverlay]) {
         if fs > MAX_FONT_SIZE {
             eprintln!(
                 "  bbox fix: fs={:.0}pt → {:.0}pt (capped) for {:?}",
-                fs, MAX_FONT_SIZE,
+                fs,
+                MAX_FONT_SIZE,
                 &text.chars().take(30).collect::<String>()
             );
             fs = MAX_FONT_SIZE;
@@ -348,7 +387,10 @@ fn fix_bbox_from_font_size(overlays: &mut [TextOverlay]) {
         if expected_h > ov.h {
             eprintln!(
                 "  bbox fix: h={:.3}\" → {:.3}\" (fs={:.0}pt, {}lines) for {:?}",
-                ov.h, expected_h, fs, num_lines as u32,
+                ov.h,
+                expected_h,
+                fs,
+                num_lines as u32,
                 &text.chars().take(30).collect::<String>()
             );
             ov.h = expected_h;
@@ -362,21 +404,27 @@ fn normalize_font_face(overlays: &mut [TextOverlay]) {
         if let Some(ref face) = ov.font_face {
             let normalized = match face.to_lowercase().as_str() {
                 // Sans-serif family
-                "helvetica" | "helvetica neue" | "sf pro" | "sf pro display"
-                | "sf pro text" | "system-ui" | "segoe ui" => "Arial",
-                "inter" | "roboto" | "open sans" | "source sans pro"
-                | "noto sans" | "lato" | "poppins" | "montserrat" => "Calibri",
+                "helvetica" | "helvetica neue" | "sf pro" | "sf pro display" | "sf pro text"
+                | "system-ui" | "segoe ui" => "Arial",
+                "inter" | "roboto" | "open sans" | "source sans pro" | "noto sans" | "lato"
+                | "poppins" | "montserrat" => "Calibri",
                 // Serif family
-                "times" | "times new roman" | "noto serif" | "source serif pro"
-                | "georgia" | "garamond" | "palatino" => "Times New Roman",
+                "times" | "times new roman" | "noto serif" | "source serif pro" | "georgia"
+                | "garamond" | "palatino" => "Times New Roman",
                 // Monospace
-                "courier" | "courier new" | "sf mono" | "fira code"
-                | "jetbrains mono" | "source code pro" | "menlo"
-                | "consolas" | "monaco" => "Courier New",
+                "courier" | "courier new" | "sf mono" | "fira code" | "jetbrains mono"
+                | "source code pro" | "menlo" | "consolas" | "monaco" => "Courier New",
                 // Already good PPT fonts — pass through
-                "arial" | "calibri" | "cambria" | "tahoma" | "verdana"
-                | "trebuchet ms" | "century gothic" | "gill sans mt"
-                | "franklin gothic medium" | "impact" => face.as_str(),
+                "arial"
+                | "calibri"
+                | "cambria"
+                | "tahoma"
+                | "verdana"
+                | "trebuchet ms"
+                | "century gothic"
+                | "gill sans mt"
+                | "franklin gothic medium"
+                | "impact" => face.as_str(),
                 // CJK fonts — keep as-is or map to common ones
                 _ if face.contains("黑体") || face.contains("Hei") => "Microsoft YaHei",
                 _ if face.contains("宋体") || face.contains("Song") => "SimSun",
@@ -402,10 +450,7 @@ fn rescale_x_positions(overlays: &mut [TextOverlay], sw: f64) {
     }
 
     // Find VQA content extent (x dimension)
-    let vqa_min = overlays
-        .iter()
-        .map(|ov| ov.x)
-        .fold(f64::INFINITY, f64::min);
+    let vqa_min = overlays.iter().map(|ov| ov.x).fold(f64::INFINITY, f64::min);
     let vqa_max = overlays
         .iter()
         .map(|ov| ov.x + ov.w)
@@ -526,7 +571,8 @@ fn align_columns(overlays: &mut [TextOverlay], sw: f64, _sh: f64) {
                     groups.remove(merge_idx + 1);
 
                     // Recompute median for merged group
-                    let mut xs: Vec<f64> = groups[merge_idx].1.iter().map(|&i| overlays[i].x).collect();
+                    let mut xs: Vec<f64> =
+                        groups[merge_idx].1.iter().map(|&i| overlays[i].x).collect();
                     xs.sort_by(|a, b| a.partial_cmp(b).unwrap());
                     groups[merge_idx].0 = xs[xs.len() / 2];
                     group_medians.remove(merge_idx + 1);
@@ -550,9 +596,7 @@ fn align_columns(overlays: &mut [TextOverlay], sw: f64, _sh: f64) {
     }
 
     // Sort columns by position
-    columns.sort_by(|a, b| {
-        overlays[a[0]].x.partial_cmp(&overlays[b[0]].x).unwrap()
-    });
+    columns.sort_by(|a, b| overlays[a[0]].x.partial_cmp(&overlays[b[0]].x).unwrap());
 
     // Step 4: Distribute columns evenly across the slide content area.
     // VQA relative column positions are unreliable — evenly distributing
@@ -663,7 +707,11 @@ Return ONLY a JSON array."#,
     for entry in &entries {
         let idx = entry.get("idx").and_then(|i| i.as_i64()).unwrap_or(999);
 
-        let text = entry.get("text").and_then(|t| t.as_str()).unwrap_or("").to_string();
+        let text = entry
+            .get("text")
+            .and_then(|t| t.as_str())
+            .unwrap_or("")
+            .to_string();
         if text.is_empty() {
             continue;
         }
@@ -685,21 +733,40 @@ Return ONLY a JSON array."#,
             let hp = entry.get("hPct").and_then(|n| n.as_f64()).unwrap_or(5.0);
             let preview: String = text.chars().take(20).collect();
             eprintln!("  VQA extra block: \"{preview}\" at ({xp:.1}%, {yp:.1}%)");
-            (xp / 100.0 * sw, yp / 100.0 * sh, wp / 100.0 * sw, hp / 100.0 * sh)
+            (
+                xp / 100.0 * sw,
+                yp / 100.0 * sh,
+                wp / 100.0 * sw,
+                hp / 100.0 * sh,
+            )
         } else {
             continue;
         };
 
         // Text + style from VQA (accurate content)
         let font_size = entry.get("fontSize").and_then(|n| n.as_f64());
-        let color = entry.get("color").and_then(|c| c.as_str()).unwrap_or("333333").to_string();
+        let color = entry
+            .get("color")
+            .and_then(|c| c.as_str())
+            .unwrap_or("333333")
+            .to_string();
         let bold = entry.get("bold").and_then(|b| b.as_bool()).unwrap_or(false);
-        let font_face = entry.get("fontFace").and_then(|f| f.as_str()).map(String::from);
-        let align = entry.get("align").and_then(|a| a.as_str()).unwrap_or("l").to_string();
+        let font_face = entry
+            .get("fontFace")
+            .and_then(|f| f.as_str())
+            .map(String::from);
+        let align = entry
+            .get("align")
+            .and_then(|a| a.as_str())
+            .unwrap_or("l")
+            .to_string();
 
         overlays.push(TextOverlay {
             text: Some(text),
-            x, y, w, h,
+            x,
+            y,
+            w,
+            h,
             font_size,
             color,
             bold,
@@ -740,7 +807,9 @@ Return ONLY a JSON array."#,
 
 /// De-duplicate OCR blocks with high spatial overlap.
 /// DeepSeek-OCR-2 sometimes emits near-identical bounding boxes for the same region.
-fn dedup_ocr_blocks(blocks: Vec<crate::deepseek_ocr::OcrBlock>) -> Vec<crate::deepseek_ocr::OcrBlock> {
+fn dedup_ocr_blocks(
+    blocks: Vec<crate::deepseek_ocr::OcrBlock>,
+) -> Vec<crate::deepseek_ocr::OcrBlock> {
     use crate::deepseek_ocr::OcrBlock;
 
     let mut kept: Vec<OcrBlock> = Vec::new();
