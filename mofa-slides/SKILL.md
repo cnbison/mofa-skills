@@ -24,6 +24,27 @@ Example: `"out": "skill-output/mofa-slides-20260308-143022/deck.pptx"`, `"slide_
 
 **Never use absolute paths like `/tmp/slides.pptx`** — use relative paths instead.
 
+## Octos Workspace Status
+
+When `mofa-slides` is used inside an Octos slides workspace:
+
+- `check_background_tasks` tells you what happened in execution
+- `check_workspace_contract` tells you what is true about the deliverable
+
+Use both when the user asks whether a deck is done, failed, or ready to send.
+
+Do not answer deck readiness from chat history alone. Treat the workspace contract as authoritative:
+
+- execution truth:
+  - generation running, verifying, delivering, completed, failed
+- deliverable truth:
+  - required source files present
+  - PPTX artifact present
+  - manifest present
+  - preview slide images present
+
+If task state says completed but workspace contract is not ready, report the deck as incomplete and name the missing artifacts or failed checks.
+
 ## Interaction Guide
 
 Before generating, gather preferences interactively. On Telegram, use inline keyboard buttons when possible:
