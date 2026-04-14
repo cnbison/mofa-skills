@@ -413,11 +413,11 @@ fn plugin_slides(
             // Canonicalize to absolute path — Node require() treats bare
             // relative paths (no ./ prefix) as node_modules lookups.
             let abs_path = std::fs::canonicalize(&path).unwrap_or(path.clone());
+            let require_path = serde_json::to_string(abs_path.to_string_lossy().as_ref())?;
             let output = std::process::Command::new("node")
                 .arg("-e")
                 .arg(format!(
-                    "console.log(JSON.stringify(require('{}')))",
-                    abs_path.display()
+                    "console.log(JSON.stringify(require({require_path})))"
                 ))
                 .output()
                 .map_err(|e| eyre::eyre!("failed to run node: {e}"))?;
