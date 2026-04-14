@@ -9,10 +9,21 @@ on:
 jobs:
   rust:
     name: Rust (check + clippy + test)
-    runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        package: [mofa-cli, mofa-podcast]
+        include:
+          - os: ubuntu-latest
+            package: mofa-cli
+          - os: ubuntu-latest
+            package: mofa-podcast
+          - os: ubuntu-latest
+            package: mofa-fm
+          - os: windows-latest
+            package: mofa-cli
+          - os: windows-latest
+            package: mofa-fm
+    runs-on: ${{ matrix.os }}
     defaults:
       run:
         working-directory: ${{ matrix.package }}

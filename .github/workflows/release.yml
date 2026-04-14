@@ -10,17 +10,25 @@ permissions:
 jobs:
   build-cli:
     strategy:
+      fail-fast: false
       matrix:
         include:
           - target: aarch64-apple-darwin
             os: macos-latest
             platform: darwin-aarch64
+            bin: mofa
           - target: x86_64-apple-darwin
             os: macos-latest
             platform: darwin-x86_64
+            bin: mofa
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
             platform: linux-x86_64
+            bin: mofa
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            platform: windows-x86_64
+            bin: mofa.exe
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -36,11 +44,26 @@ jobs:
           key: cli-${{ matrix.target }}
       - run: cargo build --release --target ${{ matrix.target }}
       - name: Package
+        shell: bash
         run: |
           mkdir -p dist
-          cp target/${{ matrix.target }}/release/mofa dist/
-          cd dist && tar czf mofa-${{ matrix.platform }}.tar.gz mofa
-          shasum -a 256 mofa-${{ matrix.platform }}.tar.gz > mofa-${{ matrix.platform }}.tar.gz.sha256
+          cp "target/${{ matrix.target }}/release/${{ matrix.bin }}" "dist/${{ matrix.bin }}"
+          python - <<'PY'
+          import hashlib
+          import pathlib
+          import tarfile
+
+          dist = pathlib.Path("dist")
+          binary = dist / "${{ matrix.bin }}"
+          archive = dist / "mofa-${{ matrix.platform }}.tar.gz"
+          with tarfile.open(archive, "w:gz") as tar:
+              tar.add(binary, arcname=binary.name)
+          digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+          (archive.with_suffix(archive.suffix + ".sha256")).write_text(
+              f"{digest}  {archive.name}\n",
+              encoding="utf-8",
+          )
+          PY
       - uses: actions/upload-artifact@v4
         with:
           name: mofa-${{ matrix.platform }}
@@ -48,11 +71,13 @@ jobs:
 
   build-fm:
     strategy:
+      fail-fast: false
       matrix:
         include:
           - target: aarch64-apple-darwin
             os: macos-latest
             platform: darwin-aarch64
+            bin: mofa-fm
     runs-on: ${{ matrix.os }}
     defaults:
       run:
