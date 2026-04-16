@@ -835,6 +835,10 @@ fn handle_voice_delete(input_json: &str) {
 // ── Main ─────────────────────────────────────────────────────────────
 
 fn main() {
+    if !cfg!(target_os = "macos") {
+        fail("mofa-fm requires macOS (ominix-api TTS is Apple Silicon only)");
+    }
+
     let args: Vec<String> = std::env::args().collect();
     let tool_name = args.get(1).map(|s| s.as_str()).unwrap_or("unknown");
 

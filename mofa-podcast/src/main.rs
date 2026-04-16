@@ -18,6 +18,7 @@ use serde_json::json;
 const PRESET_VOICES: &[&str] = &[
     "vivian", "serena", "ryan", "aiden", "eric", "dylan", "uncle_fu", "ono_anna", "sohee",
 ];
+const SEGMENT_TAIL_PADDING_MS: u32 = 250;
 
 // ── Emotion → TTS prompt mapping ───────────────────────────────────
 
@@ -112,6 +113,44 @@ fn emotion_to_prompt(emotion: &str, language: Option<TtsLanguage>) -> Option<&'s
         }
         _ => None,
     }
+}
+
+fn terminal_char_for_punctuation_check(text: &str) -> Option<char> {
+    for ch in text.trim_end().chars().rev() {
+        if ch.is_whitespace() {
+            continue;
+        }
+        if matches!(
+            ch,
+            '"' | '\'' | '”' | '’' | ')' | '）' | ']' | '】' | '}' | '」' | '』'
+        ) {
+            continue;
+        }
+        return Some(ch);
+    }
+    None
+}
+
+fn has_terminal_punctuation(text: &str) -> bool {
+    terminal_char_for_punctuation_check(text).is_some_and(|ch| {
+        matches!(
+            ch,
+            '.' | '!' | '?' | ',' | ';' | ':' | '。' | '！' | '？' | '，' | '；' | '：' | '…'
+        )
+    })
+}
+
+fn normalize_tts_text(text: &str, language: Option<TtsLanguage>) -> String {
+    let trimmed = text.trim();
+    if trimmed.is_empty() || has_terminal_punctuation(trimmed) {
+        return trimmed.to_string();
+    }
+
+    let punctuation = match language {
+        Some(TtsLanguage::Chinese) => '。',
+        _ => '.',
+    };
+    format!("{trimmed}{punctuation}")
 }
 
 // ── Voice registry (shared with mofa-fm) ───────────────────────────
@@ -338,9 +377,7 @@ fn parse_wav_metadata(bytes: &[u8]) -> Result<WavMetadata<'_>, String> {
     })
 }
 
-fn pcm_to_wav(pcm: &[u8], sample_rate: u32) -> Vec<u8> {
-    let channels: u16 = 1;
-    let bits: u16 = 16;
+fn pcm_to_wav_with_format(pcm: &[u8], sample_rate: u32, channels: u16, bits: u16) -> Vec<u8> {
     let byte_rate = sample_rate * u32::from(channels) * u32::from(bits) / 8;
     let block_align = channels * bits / 8;
     let data_len = pcm.len() as u32;
@@ -364,11 +401,42 @@ fn pcm_to_wav(pcm: &[u8], sample_rate: u32) -> Vec<u8> {
     buf
 }
 
+fn pcm_to_wav(pcm: &[u8], sample_rate: u32) -> Vec<u8> {
+    pcm_to_wav_with_format(pcm, sample_rate, 1, 16)
+}
+
 fn generate_silence_wav(duration_ms: u32) -> Vec<u8> {
     let sample_rate: u32 = 24000;
     let num_samples = sample_rate * duration_ms / 1000;
     let pcm = vec![0u8; (num_samples * 2) as usize]; // 16-bit silence
     pcm_to_wav(&pcm, sample_rate)
+}
+
+fn append_trailing_silence_to_wav(bytes: &[u8], duration_ms: u32) -> Vec<u8> {
+    if duration_ms == 0 {
+        return bytes.to_vec();
+    }
+
+    let Ok(wav) = parse_wav_metadata(bytes) else {
+        return bytes.to_vec();
+    };
+    if wav.audio_format != 1 || wav.bits_per_sample == 0 || wav.bits_per_sample % 8 != 0 {
+        return bytes.to_vec();
+    }
+
+    let bytes_per_frame =
+        usize::from(wav.channels).saturating_mul(usize::from(wav.bits_per_sample / 8));
+    if bytes_per_frame == 0 {
+        return bytes.to_vec();
+    }
+
+    let pad_frames = (u64::from(wav.sample_rate) * u64::from(duration_ms)) / 1000;
+    let pad_bytes = pad_frames.saturating_mul(bytes_per_frame as u64) as usize;
+
+    let mut pcm = Vec::with_capacity(wav.data.len().saturating_add(pad_bytes));
+    pcm.extend_from_slice(wav.data);
+    pcm.resize(pcm.len().saturating_add(pad_bytes), 0);
+    pcm_to_wav_with_format(&pcm, wav.sample_rate, wav.channels, wav.bits_per_sample)
 }
 
 fn audio_duration_ms(bytes: &[u8], sample_rate: u32) -> u32 {
@@ -603,41 +671,244 @@ enum ScriptLine {
 struct ScriptParseReport {
     lines: Vec<ScriptLine>,
     invalid_lines: Vec<String>,
+    repair_summary: ScriptRepairSummary,
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+struct ScriptRepairSummary {
+    normalized_markdown_wrappers: usize,
+    normalized_header_punctuation: usize,
+    collapsed_multiline_dialogues: usize,
+    repaired_known_speaker_voices: usize,
+}
+
+impl ScriptRepairSummary {
+    fn has_repairs(self) -> bool {
+        self.normalized_markdown_wrappers > 0
+            || self.normalized_header_punctuation > 0
+            || self.collapsed_multiline_dialogues > 0
+            || self.repaired_known_speaker_voices > 0
+    }
+
+    fn messages(self) -> Vec<String> {
+        let mut messages = Vec::new();
+        if self.normalized_markdown_wrappers > 0 {
+            let count = self.normalized_markdown_wrappers;
+            messages.push(format!(
+                "normalized markdown wrappers on {count} dialogue line{}",
+                if count == 1 { "" } else { "s" }
+            ));
+        }
+        if self.normalized_header_punctuation > 0 {
+            let count = self.normalized_header_punctuation;
+            messages.push(format!(
+                "normalized bracket/header punctuation on {count} line{}",
+                if count == 1 { "" } else { "s" }
+            ));
+        }
+        if self.collapsed_multiline_dialogues > 0 {
+            let count = self.collapsed_multiline_dialogues;
+            messages.push(format!(
+                "collapsed {count} multiline dialogue block{} into canonical one-line format",
+                if count == 1 { "" } else { "s" }
+            ));
+        }
+        if self.repaired_known_speaker_voices > 0 {
+            let count = self.repaired_known_speaker_voices;
+            messages.push(format!(
+                "repaired known speaker voice alias on {count} dialogue line{}",
+                if count == 1 { "" } else { "s" }
+            ));
+        }
+        messages
+    }
+}
+
+fn normalized_character_alias_key(character: &str) -> String {
+    character
+        .chars()
+        .filter(|ch| !ch.is_whitespace() && *ch != '-' && *ch != '_')
+        .flat_map(|ch| ch.to_lowercase())
+        .collect()
+}
+
+fn preferred_clone_voice_for_character(character: &str) -> Option<&'static str> {
+    match normalized_character_alias_key(character).as_str() {
+        "杨幂" | "yangmi" => Some("yangmi"),
+        "窦文涛" | "douwentao" => Some("douwentao"),
+        _ => None,
+    }
+}
+
+fn repair_known_speaker_voice_alias(
+    character: &str,
+    voice: String,
+    is_clone: bool,
+) -> (String, bool, bool) {
+    let Some(preferred_voice) = preferred_clone_voice_for_character(character) else {
+        return (voice, is_clone, false);
+    };
+    if is_clone && voice == preferred_voice {
+        return (voice, is_clone, false);
+    }
+    (preferred_voice.to_string(), true, true)
+}
+
+struct NormalizedScriptLine {
+    text: String,
+    normalized_markdown_wrapper: bool,
+    normalized_header_punctuation: bool,
+}
+
+fn normalize_script_line(line: &str) -> NormalizedScriptLine {
+    let mut text = line.trim().to_string();
+    let mut normalized_markdown_wrapper = false;
+    let mut normalized_header_punctuation = false;
+
+    let bracket_normalized = text
+        .replace('【', "[")
+        .replace('】', "]")
+        .replace('［', "[")
+        .replace('］', "]");
+    if bracket_normalized != text {
+        text = bracket_normalized;
+        normalized_header_punctuation = true;
+    }
+
+    if text.starts_with("**[") {
+        if let Some(end) = text.find("]**") {
+            text = format!("{}{}", &text[2..end + 1], &text[end + 3..]);
+            normalized_markdown_wrapper = true;
+        }
+    }
+
+    if text.starts_with('[') {
+        if let Some(close) = text.find(']') {
+            let (header, rest) = text.split_at(close + 1);
+            let normalized_header = header
+                .replace('—', " - ")
+                .replace('–', " - ")
+                .replace('－', " - ")
+                .replace('：', ":")
+                .replace('，', ",");
+            if normalized_header != header {
+                text = format!("{normalized_header}{rest}");
+                normalized_header_punctuation = true;
+            }
+        }
+    }
+
+    NormalizedScriptLine {
+        text,
+        normalized_markdown_wrapper,
+        normalized_header_punctuation,
+    }
+}
+
+fn is_skippable_script_metadata(line: &str) -> bool {
+    line.starts_with('#')
+        || line.starts_with('|')
+        || line.starts_with("**")
+        || line.starts_with('-')
+        || line.starts_with('>')
+        || line.starts_with("```")
+        || line == "---"
 }
 
 fn parse_script_report(script: &str) -> ScriptParseReport {
-    let dialogue_re = Regex::new(r"^\[([^\]\-]+)\s*-\s*([^\],]+),\s*([^\]]+)\]\s*(.+)$").unwrap();
+    let dialogue_re = Regex::new(r"^\[([^\]\-]+)\s*-\s*([^\],]+),\s*([^\]]+)\]\s*(.*)$").unwrap();
     let bgm_re = Regex::new(r"^\[BGM:\s*([^—\-]+)[—\-]\s*([^,]+),\s*(\d+)s?\]").unwrap();
     let pause_re = Regex::new(r"^\[PAUSE:\s*(\d+)s?\]").unwrap();
 
     let mut lines = Vec::new();
     let mut invalid_lines = Vec::new();
     let mut seg_counter: u32 = 0;
+    let mut repair_summary = ScriptRepairSummary::default();
 
-    for line in script.lines() {
-        let line = line.trim();
-        if line.is_empty()
-            || line.starts_with('#')
-            || line.starts_with('|')
-            || line.starts_with("**")
-            || line == "---"
-        {
+    let raw_lines: Vec<&str> = script.lines().collect();
+    let mut i = 0usize;
+    while i < raw_lines.len() {
+        let line = raw_lines[i].trim();
+        if line.is_empty() {
+            i += 1;
             continue;
         }
 
-        if let Some(caps) = dialogue_re.captures(line) {
-            seg_counter += 1;
+        let normalized_line = normalize_script_line(line);
+        if normalized_line.normalized_markdown_wrapper {
+            repair_summary.normalized_markdown_wrappers += 1;
+        }
+        if normalized_line.normalized_header_punctuation {
+            repair_summary.normalized_header_punctuation += 1;
+        }
+
+        if let Some(caps) = bgm_re.captures(&normalized_line.text) {
+            lines.push(ScriptLine::Bgm {
+                description: caps[1].trim().to_string(),
+                fade: caps[2].trim().to_string(),
+                duration_s: caps[3].parse().unwrap_or(3),
+            });
+        } else if let Some(caps) = pause_re.captures(&normalized_line.text) {
+            lines.push(ScriptLine::Pause {
+                duration_s: caps[1].parse().unwrap_or(2),
+            });
+        } else if let Some(caps) = dialogue_re.captures(&normalized_line.text) {
             let character = caps[1].trim().to_string();
             let voice_raw = caps[2].trim().to_string();
             let emotion = caps[3].trim().to_string();
-            let text = caps[4].trim().to_string();
+            let inline_text = caps[4].trim().to_string();
+
+            let text = if !inline_text.is_empty() {
+                inline_text
+            } else {
+                let mut continuation = Vec::new();
+                let mut j = i + 1;
+                while j < raw_lines.len() {
+                    let next = raw_lines[j].trim();
+                    if next.is_empty() {
+                        if continuation.is_empty() {
+                            j += 1;
+                            continue;
+                        }
+                        break;
+                    }
+
+                    let normalized_next = normalize_script_line(next);
+                    if dialogue_re.is_match(&normalized_next.text)
+                        || bgm_re.is_match(&normalized_next.text)
+                        || pause_re.is_match(&normalized_next.text)
+                        || is_skippable_script_metadata(next)
+                    {
+                        break;
+                    }
+
+                    continuation.push(next.to_string());
+                    j += 1;
+                }
+
+                if continuation.is_empty() {
+                    invalid_lines.push(line.to_string());
+                    i += 1;
+                    continue;
+                }
+
+                repair_summary.collapsed_multiline_dialogues += 1;
+                i = j - 1;
+                continuation.join(" ")
+            };
 
             let (voice, is_clone) = if let Some(cloned) = voice_raw.strip_prefix("clone:") {
                 (cloned.to_string(), true)
             } else {
                 (voice_raw.clone(), false)
             };
+            let (voice, is_clone, repaired_voice_alias) =
+                repair_known_speaker_voice_alias(&character, voice, is_clone);
+            if repaired_voice_alias {
+                repair_summary.repaired_known_speaker_voices += 1;
+            }
 
+            seg_counter += 1;
             lines.push(ScriptLine::Dialogue {
                 seg_id: seg_counter,
                 character,
@@ -646,23 +917,18 @@ fn parse_script_report(script: &str) -> ScriptParseReport {
                 emotion,
                 text,
             });
-        } else if let Some(caps) = bgm_re.captures(line) {
-            lines.push(ScriptLine::Bgm {
-                description: caps[1].trim().to_string(),
-                fade: caps[2].trim().to_string(),
-                duration_s: caps[3].parse().unwrap_or(3),
-            });
-        } else if let Some(caps) = pause_re.captures(line) {
-            lines.push(ScriptLine::Pause {
-                duration_s: caps[1].parse().unwrap_or(2),
-            });
+        } else if is_skippable_script_metadata(line) {
+            i += 1;
+            continue;
         } else {
             invalid_lines.push(line.to_string());
         }
+        i += 1;
     }
     ScriptParseReport {
         lines,
         invalid_lines,
+        repair_summary,
     }
 }
 
@@ -691,6 +957,102 @@ fn format_invalid_script_lines(invalid_lines: &[String]) -> String {
     )
 }
 
+fn render_canonical_script(lines: &[ScriptLine]) -> String {
+    let mut rendered = Vec::with_capacity(lines.len());
+    for line in lines {
+        match line {
+            ScriptLine::Dialogue {
+                character,
+                voice,
+                is_clone,
+                emotion,
+                text,
+                ..
+            } => {
+                let voice_label = if *is_clone {
+                    format!("clone:{voice}")
+                } else {
+                    voice.clone()
+                };
+                rendered.push(format!("[{character} - {voice_label}, {emotion}] {text}"));
+            }
+            ScriptLine::Bgm {
+                description,
+                fade,
+                duration_s,
+            } => {
+                rendered.push(format!("[BGM: {description} - {fade}, {duration_s}s]"));
+            }
+            ScriptLine::Pause { duration_s } => {
+                rendered.push(format!("[PAUSE: {duration_s}s]"));
+            }
+        }
+    }
+    rendered.join("\n\n")
+}
+
+struct PreparedPodcastScript {
+    lines: Vec<ScriptLine>,
+    repair_messages: Vec<String>,
+    repaired_markdown: Option<String>,
+}
+
+fn validate_and_fix_script_markdown(script: &str) -> Result<PreparedPodcastScript, String> {
+    let report = parse_script_report(script);
+    if report.lines.is_empty() {
+        return Err(
+            "No dialogue lines found in script. Ensure format: [Character - voice, emotion] text"
+                .to_string(),
+        );
+    }
+    if !report.invalid_lines.is_empty() {
+        return Err(format_invalid_script_lines(&report.invalid_lines));
+    }
+
+    let repair_messages = report.repair_summary.messages();
+    let repaired_markdown = report
+        .repair_summary
+        .has_repairs()
+        .then(|| render_canonical_script(&report.lines));
+
+    Ok(PreparedPodcastScript {
+        lines: report.lines,
+        repair_messages,
+        repaired_markdown,
+    })
+}
+
+fn write_repaired_script_markdown(output_dir: &Path, markdown: &str) -> Result<PathBuf, String> {
+    let repaired_path = output_dir.join(format!("podcast_script_normalized_{}.md", timestamp()));
+    std::fs::write(&repaired_path, markdown).map_err(|error| {
+        format!(
+            "Failed to write normalized podcast script '{}': {error}",
+            repaired_path.display()
+        )
+    })?;
+    Ok(repaired_path)
+}
+
+fn attach_script_fix_context(
+    message: String,
+    repaired_script_path: Option<&Path>,
+    repair_messages: &[String],
+) -> String {
+    if repair_messages.is_empty() && repaired_script_path.is_none() {
+        return message;
+    }
+
+    let mut enriched = message;
+    if !repair_messages.is_empty() {
+        enriched.push_str("\nScript validator repairs: ");
+        enriched.push_str(&repair_messages.join("; "));
+    }
+    if let Some(path) = repaired_script_path {
+        enriched.push_str(&format!("\nNormalized script: {}", path.display()));
+    }
+    enriched
+}
+
 // ── TTS generation for a single segment ────────────────────────────
 
 fn generate_tts_segment(
@@ -704,6 +1066,7 @@ fn generate_tts_segment(
 ) -> Result<(), String> {
     let language = infer_tts_language(text);
     let prompt = emotion_to_prompt(emotion, language);
+    let prepared_text = normalize_tts_text(text, language);
 
     let wav_bytes = if is_clone {
         let ref_path = resolve_custom_voice(voice).ok_or_else(|| {
@@ -716,7 +1079,7 @@ fn generate_tts_segment(
             .map_err(|e| format!("Failed to read voice '{}': {e}", voice))?;
 
         use reqwest::blocking::multipart::{Form, Part};
-        let mut form = Form::new().text("input", text.to_string()).part(
+        let mut form = Form::new().text("input", prepared_text.clone()).part(
             "reference_audio",
             Part::bytes(ref_bytes)
                 .file_name("ref.wav")
@@ -756,7 +1119,7 @@ fn generate_tts_segment(
         }
     } else {
         let mut body = json!({
-            "input": text,
+            "input": prepared_text,
             "voice": voice,
         });
         if let Some(language) = language {
@@ -796,7 +1159,9 @@ fn generate_tts_segment(
         return Err("TTS returned empty or too-short audio".to_string());
     }
 
-    std::fs::write(output_path, &wav_bytes)
+    let padded_wav_bytes = append_trailing_silence_to_wav(&wav_bytes, SEGMENT_TAIL_PADDING_MS);
+
+    std::fs::write(output_path, &padded_wav_bytes)
         .map_err(|e| format!("Failed to write {output_path}: {e}"))?;
     Ok(())
 }
@@ -901,18 +1266,22 @@ fn generate_podcast(input: GenerateInput) -> Result<serde_json::Value, String> {
     })?;
     let _seg_dir_cleanup = SegmentDirCleanup::new(seg_dir.clone());
 
-    // Parse script
-    let parse_report = parse_script_report(&script);
-    if parse_report.lines.is_empty() {
-        return Err(
-            "No dialogue lines found in script. Ensure format: [Character - voice, emotion] text"
-                .to_string(),
+    // Validate and normalize script markdown before generation.
+    let prepared_script = validate_and_fix_script_markdown(&script)?;
+    let repaired_script_path = if let Some(markdown) = prepared_script.repaired_markdown.as_deref()
+    {
+        Some(write_repaired_script_markdown(&output_dir, markdown)?)
+    } else {
+        None
+    };
+    if let Some(path) = &repaired_script_path {
+        eprintln!(
+            "[podcast] Script validator wrote normalized markdown to {}",
+            path.display()
         );
     }
-    if !parse_report.invalid_lines.is_empty() {
-        return Err(format_invalid_script_lines(&parse_report.invalid_lines));
-    }
-    let lines = parse_report.lines;
+    let repair_messages = prepared_script.repair_messages;
+    let lines = prepared_script.lines;
 
     let dialogue_count = lines
         .iter()
@@ -972,8 +1341,15 @@ fn generate_podcast(input: GenerateInput) -> Result<serde_json::Value, String> {
 
     if !configuration_errors.is_empty() {
         return Err(format!(
-            "Invalid podcast voice configuration:\n{}",
-            configuration_errors.join("\n")
+            "{}",
+            attach_script_fix_context(
+                format!(
+                    "Invalid podcast voice configuration:\n{}",
+                    configuration_errors.join("\n")
+                ),
+                repaired_script_path.as_deref(),
+                &repair_messages,
+            )
         ));
     }
 
@@ -1089,20 +1465,32 @@ fn generate_podcast(input: GenerateInput) -> Result<serde_json::Value, String> {
     }
 
     if timeline_wavs.is_empty() {
-        return Err("No audio segments were generated successfully".to_string());
+        return Err(attach_script_fix_context(
+            "No audio segments were generated successfully".to_string(),
+            repaired_script_path.as_deref(),
+            &repair_messages,
+        ));
     }
 
     if assembled_dialogue_segments != dialogue_count {
-        return Err(format!(
-            "Podcast generation incomplete: expected {dialogue_count} dialogue segments, but only assembled {assembled_dialogue_segments}. Failed segments:\n{}",
-            errors.join("\n")
+        return Err(attach_script_fix_context(
+            format!(
+                "Podcast generation incomplete: expected {dialogue_count} dialogue segments, but only assembled {assembled_dialogue_segments}. Failed segments:\n{}",
+                errors.join("\n")
+            ),
+            repaired_script_path.as_deref(),
+            &repair_messages,
         ));
     }
 
     // Concatenate all WAVs
     let concat_wav = output_dir.join(format!("podcast_full_{}.wav", timestamp()));
     if let Err(e) = concatenate_wavs(&timeline_wavs, &concat_wav.to_string_lossy()) {
-        return Err(format!("Concatenation failed: {e}"));
+        return Err(attach_script_fix_context(
+            format!("Concatenation failed: {e}"),
+            repaired_script_path.as_deref(),
+            &repair_messages,
+        ));
     }
 
     // Convert to MP3
@@ -1116,9 +1504,13 @@ fn generate_podcast(input: GenerateInput) -> Result<serde_json::Value, String> {
     // Report
     let file_size = std::fs::metadata(&final_path).map(|m| m.len()).unwrap_or(0);
     if file_size == 0 {
-        return Err(format!(
-            "Final {} output file was empty: {}",
-            final_audio.format, final_path
+        return Err(attach_script_fix_context(
+            format!(
+                "Final {} output file was empty: {}",
+                final_audio.format, final_path
+            ),
+            repaired_script_path.as_deref(),
+            &repair_messages,
         ));
     }
     let size_mb = file_size as f64 / 1_048_576.0;
@@ -1133,11 +1525,28 @@ fn generate_podcast(input: GenerateInput) -> Result<serde_json::Value, String> {
     if let Some(warning) = &final_audio.warning {
         output_msg.push_str(&format!("\n- Note: {warning}"));
     }
+    if !repair_messages.is_empty() {
+        output_msg.push_str(&format!(
+            "\n- Script validator repairs: {}",
+            repair_messages.join("; ")
+        ));
+    }
+    let normalized_script_path = repaired_script_path
+        .as_ref()
+        .map(|path| path.to_string_lossy().to_string());
+    if let Some(path) = &normalized_script_path {
+        output_msg.push_str(&format!("\n- Normalized script: {path}"));
+    }
 
     Ok(json!({
         "output": output_msg,
         "success": true,
-        "files_to_send": [&final_path]
+        "files_to_send": [&final_path],
+        "script_repair": {
+            "applied": !repair_messages.is_empty(),
+            "messages": repair_messages,
+            "normalized_script_path": normalized_script_path,
+        }
     }))
 }
 
@@ -1397,6 +1806,188 @@ mod tests {
         }
     }
 
+    #[test]
+    fn parse_dialogue_text_on_following_line() {
+        let script = "[Host - vivian, cheerful]\nWelcome to the show!";
+        let lines = parse_script(script);
+        assert_eq!(lines.len(), 1);
+        match &lines[0] {
+            ScriptLine::Dialogue {
+                character, text, ..
+            } => {
+                assert_eq!(character, "Host");
+                assert_eq!(text, "Welcome to the show!");
+            }
+            _ => panic!("Expected Dialogue"),
+        }
+    }
+
+    #[test]
+    fn parse_bold_wrapped_dialogue_markup() {
+        let script = "**[杨幂 - clone:yangmi, 热情专业]** 大家好，欢迎收听节目。";
+        let lines = parse_script(script);
+        assert_eq!(lines.len(), 1);
+        match &lines[0] {
+            ScriptLine::Dialogue {
+                character,
+                voice,
+                is_clone,
+                text,
+                ..
+            } => {
+                assert_eq!(character, "杨幂");
+                assert_eq!(voice, "yangmi");
+                assert!(*is_clone);
+                assert_eq!(text, "大家好，欢迎收听节目。");
+            }
+            _ => panic!("Expected Dialogue"),
+        }
+    }
+
+    #[test]
+    fn parse_known_speaker_repairs_generic_voice_aliases() {
+        let script = "[杨幂 - nova, calm] 大家好。\n[窦文涛 - alloy, calm] 今天我们聊新闻。";
+        let report = parse_script_report(script);
+        assert!(report.invalid_lines.is_empty(), "{:?}", report.invalid_lines);
+        assert_eq!(report.repair_summary.repaired_known_speaker_voices, 2);
+        match &report.lines[0] {
+            ScriptLine::Dialogue { voice, is_clone, .. } => {
+                assert_eq!(voice, "yangmi");
+                assert!(*is_clone);
+            }
+            _ => panic!("Expected Dialogue"),
+        }
+        match &report.lines[1] {
+            ScriptLine::Dialogue { voice, is_clone, .. } => {
+                assert_eq!(voice, "douwentao");
+                assert!(*is_clone);
+            }
+            _ => panic!("Expected Dialogue"),
+        }
+    }
+
+    #[test]
+    fn parse_dialogue_with_fullwidth_header_punctuation() {
+        let script = "【Host — vivian， cheerful】 Hello world!";
+        let lines = parse_script(script);
+        assert_eq!(lines.len(), 1);
+        match &lines[0] {
+            ScriptLine::Dialogue {
+                character,
+                voice,
+                emotion,
+                text,
+                ..
+            } => {
+                assert_eq!(character, "Host");
+                assert_eq!(voice, "vivian");
+                assert_eq!(emotion, "cheerful");
+                assert_eq!(text, "Hello world!");
+            }
+            _ => panic!("Expected Dialogue"),
+        }
+    }
+
+    #[test]
+    fn parse_generated_markdown_script_formats_used_in_production() {
+        let script = r#"# 今日北京新闻播客 — 2026年4月15日
+
+## 主持人
+- 窦文涛（clone:douwentao）— 资深新闻评论员
+- 杨幂（clone:yangmi）— 新闻主播
+
+---
+
+[窦文涛 - clone:douwentao, professional, enthusiastic]
+听众朋友们大家好！这里是今日新闻播客。
+
+**[杨幂 - clone:yangmi, 热情专业]** 大家好，欢迎收听节目。
+
+> *本节目由AI辅助生成。*
+"#;
+        let report = parse_script_report(script);
+        assert!(
+            report.invalid_lines.is_empty(),
+            "{:?}",
+            report.invalid_lines
+        );
+        assert_eq!(report.lines.len(), 2);
+        assert!(
+            matches!(&report.lines[0], ScriptLine::Dialogue { character, .. } if character == "窦文涛")
+        );
+        assert!(
+            matches!(&report.lines[1], ScriptLine::Dialogue { character, .. } if character == "杨幂")
+        );
+    }
+
+    #[test]
+    fn validate_and_fix_script_markdown_rewrites_common_llm_drift() {
+        let script = "**【Host — vivian， cheerful】**\nHello world!";
+        let prepared = validate_and_fix_script_markdown(script).unwrap();
+        assert!(!prepared.repair_messages.is_empty());
+        assert_eq!(
+            prepared.repaired_markdown.as_deref(),
+            Some("[Host - vivian, cheerful] Hello world!")
+        );
+        assert_eq!(prepared.lines.len(), 1);
+    }
+
+    #[test]
+    fn validate_and_fix_script_markdown_rewrites_known_speaker_voice_aliases() {
+        let script = "[杨幂 - nova, calm] 大家好。";
+        let prepared = validate_and_fix_script_markdown(script).unwrap();
+        assert!(
+            prepared
+                .repair_messages
+                .iter()
+                .any(|message| message.contains("known speaker voice alias"))
+        );
+        assert_eq!(
+            prepared.repaired_markdown.as_deref(),
+            Some("[杨幂 - clone:yangmi, calm] 大家好。")
+        );
+    }
+
+    #[test]
+    fn generate_podcast_accepts_multiline_dialogue_before_voice_validation() {
+        let input = GenerateInput {
+            script: Some("[Host - not_a_real_voice, calm]\nhello".to_string()),
+            script_path: None,
+            output_dir: Some(format!("/tmp/mofa-podcast-test-{}", timestamp())),
+        };
+        let err = generate_podcast(input).unwrap_err();
+        assert!(err.contains("voice"), "{err}");
+    }
+
+    #[test]
+    fn generate_podcast_persists_normalized_script_before_voice_validation() {
+        let output_dir = PathBuf::from(format!("/tmp/mofa-podcast-test-{}", timestamp()));
+        let input = GenerateInput {
+            script: Some("**【Host — not_a_real_voice， calm】**\nhello".to_string()),
+            script_path: None,
+            output_dir: Some(output_dir.to_string_lossy().to_string()),
+        };
+        let err = generate_podcast(input).unwrap_err();
+        assert!(err.contains("unknown voice"));
+        assert!(err.contains("Normalized script:"));
+
+        let repaired_script = std::fs::read_dir(&output_dir)
+            .unwrap()
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .find(|path| {
+                path.file_name()
+                    .and_then(|name| name.to_str())
+                    .map(|name| name.starts_with("podcast_script_normalized_"))
+                    .unwrap_or(false)
+            })
+            .expect("normalized script should exist");
+        let content = std::fs::read_to_string(&repaired_script).unwrap();
+        assert_eq!(content.trim(), "[Host - not_a_real_voice, calm] hello");
+
+        let _ = std::fs::remove_dir_all(&output_dir);
+    }
+
     // ── Emotion mapping tests ──────────────────────────────────────
 
     #[test]
@@ -1499,6 +2090,17 @@ mod tests {
     }
 
     #[test]
+    fn append_trailing_silence_extends_wav_duration() {
+        let wav = pcm_to_wav(&vec![1u8; 4800], 24000); // 100ms mono PCM
+        let padded = append_trailing_silence_to_wav(&wav, 250);
+        assert_eq!(audio_duration_ms(&wav, 24000), 100);
+        assert_eq!(audio_duration_ms(&padded, 24000), 350);
+        let original = parse_wav_metadata(&wav).unwrap();
+        let padded_meta = parse_wav_metadata(&padded).unwrap();
+        assert_eq!(&padded_meta.data[..original.data.len()], original.data);
+    }
+
+    #[test]
     fn infer_tts_language_detects_chinese_and_english() {
         assert_eq!(
             infer_tts_language("大家好，欢迎收听节目"),
@@ -1507,6 +2109,34 @@ mod tests {
         assert_eq!(
             infer_tts_language("Hello and welcome to the show"),
             Some(TtsLanguage::English)
+        );
+    }
+
+    #[test]
+    fn normalize_tts_text_adds_terminal_punctuation() {
+        assert_eq!(
+            normalize_tts_text("大家好，欢迎收听节目", Some(TtsLanguage::Chinese)),
+            "大家好，欢迎收听节目。"
+        );
+        assert_eq!(
+            normalize_tts_text("Hello and welcome", Some(TtsLanguage::English)),
+            "Hello and welcome."
+        );
+    }
+
+    #[test]
+    fn normalize_tts_text_preserves_existing_terminal_punctuation() {
+        assert_eq!(
+            normalize_tts_text("大家好，欢迎收听节目。", Some(TtsLanguage::Chinese)),
+            "大家好，欢迎收听节目。"
+        );
+        assert_eq!(
+            normalize_tts_text("Hello and welcome!", Some(TtsLanguage::English)),
+            "Hello and welcome!"
+        );
+        assert_eq!(
+            normalize_tts_text("“欢迎收听节目。”", Some(TtsLanguage::Chinese)),
+            "“欢迎收听节目。”"
         );
     }
 
@@ -1619,6 +2249,10 @@ mod tests {
 // ── Main ───────────────────────────────────────────────────────────
 
 fn main() {
+    if !cfg!(target_os = "macos") {
+        fail("mofa-podcast requires macOS (ominix-api TTS is Apple Silicon only)");
+    }
+
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 2 {
         fail("Usage: mofa-podcast <tool_name>  (podcast_voices | podcast_generate)");

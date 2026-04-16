@@ -22,13 +22,13 @@
       "name": "podcast_generate",
       "spawn_only": true,
       "spawn_only_message": "SUCCESS: Podcast generation is now running in background. Voice segments are being generated and will be assembled into the final audio file. The audio file will be automatically delivered when ready.",
-      "description": "Generate the full podcast audio from an approved markdown script. Parses all speaker lines, generates TTS for each segment (built-in voices first, then cloned to minimize model switching), concatenates in timeline order with pauses, and outputs a single final audio file. This runs in background — do NOT wait for it.",
+      "description": "Generate the full podcast audio from an approved markdown script. Validates and deterministically repairs common markdown drift such as bold-wrapped speaker headers, multiline dialogue blocks, and full-width header punctuation before parsing. Then generates TTS for each segment (built-in voices first, then cloned to minimize model switching), concatenates in timeline order with pauses, and outputs a single final audio file. This runs in background — do NOT wait for it.",
       "input_schema": {
         "type": "object",
         "properties": {
           "script": {
             "type": "string",
-            "description": "The full markdown podcast script content. Must contain [Character - voice, emotion] formatted lines."
+            "description": "The full markdown podcast script content. Canonical dialogue format is [Character - voice, emotion] text, but the validator can repair common markdown formatting drift before synthesis."
           },
           "script_path": {
             "type": "string",
